@@ -81,69 +81,66 @@
             </div>
           </td>
         </tr>
-
-        <!-- Modal Konfirmasi -->
-        <tr style="display:none">
-        <td colspan="7">
-        <div class="modal fade" id="modalConfirm<?= $p['id'] ?>" tabindex="-1">
-          <div class="modal-dialog">
-            <div class="modal-content">
-              <div class="modal-header">
-                <h6 class="modal-title fw-semibold text-success">
-                  <i class="ti ti-check me-1"></i> Konfirmasi Draft Ulang
-                </h6>
-                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
-              </div>
-              <form action="<?= base_url("draft-ulang/confirm/{$p['id']}") ?>" method="post">
-                <?= csrf_field() ?>
-                <div class="modal-body">
-                  <div class="alert alert-warning py-2" style="font-size:12px">
-                    Anda akan mengembalikan status penilaian
-                    <strong><?= $p['tipe']==='pegawai' ? esc($p['nama_pegawai']) : 'seluruh pegawai periode ini' ?></strong>
-                    dari <strong>Approved</strong> menjadi <strong>Draft</strong>.
-                  </div>
-                  <p style="font-size:12px"><strong>Alasan dari Approver:</strong><br><?= esc($p['alasan']) ?></p>
-                  <label class="form-label small fw-semibold">Catatan Admin (opsional)</label>
-                  <textarea name="catatan_admin" class="form-control" rows="2"></textarea>
-                </div>
-                <div class="modal-footer">
-                  <button type="button" class="btn btn-light btn-sm" data-bs-dismiss="modal">Batal</button>
-                  <button type="submit" class="btn btn-success btn-sm">Konfirmasi Draft Ulang</button>
-                </div>
-              </form>
-            </div>
-          </div>
-        </div>
-
-        <!-- Modal Tolak -->
-        <div class="modal fade" id="modalDecline<?= $p['id'] ?>" tabindex="-1">
-          <div class="modal-dialog">
-            <div class="modal-content">
-              <div class="modal-header">
-                <h6 class="modal-title fw-semibold text-danger">Tolak Permintaan</h6>
-                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
-              </div>
-              <form action="<?= base_url("draft-ulang/decline/{$p['id']}") ?>" method="post">
-                <?= csrf_field() ?>
-                <div class="modal-body">
-                  <label class="form-label small fw-semibold">Alasan Penolakan</label>
-                  <textarea name="catatan_admin" class="form-control" rows="2" required></textarea>
-                </div>
-                <div class="modal-footer">
-                  <button type="button" class="btn btn-light btn-sm" data-bs-dismiss="modal">Batal</button>
-                  <button type="submit" class="btn btn-danger btn-sm">Tolak Permintaan</button>
-                </div>
-              </form>
-            </div>
-          </div>
-        </div>
-        </td>
-        </tr>
         <?php endforeach; ?>
       </tbody>
     </table>
   </div>
 </div>
+
+<!-- Modal-modal ditaruh di luar struktur tabel agar form tidak dipindah/rusak oleh browser saat parsing -->
+<?php foreach ($pending as $p): ?>
+<div class="modal fade" id="modalConfirm<?= $p['id'] ?>" tabindex="-1">
+  <div class="modal-dialog">
+    <div class="modal-content">
+      <div class="modal-header">
+        <h6 class="modal-title fw-semibold text-success">
+          <i class="ti ti-check me-1"></i> Konfirmasi Draft Ulang
+        </h6>
+        <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+      </div>
+      <form action="<?= base_url("draft-ulang/confirm/{$p['id']}") ?>" method="post">
+        <?= csrf_field() ?>
+        <div class="modal-body">
+          <div class="alert alert-warning py-2" style="font-size:12px">
+            Anda akan mengembalikan status penilaian
+            <strong><?= $p['tipe']==='pegawai' ? esc($p['nama_pegawai']) : 'seluruh pegawai periode ini' ?></strong>
+            dari <strong>Approved</strong> menjadi <strong>Draft</strong>.
+          </div>
+          <p style="font-size:12px"><strong>Alasan dari Approver:</strong><br><?= esc($p['alasan']) ?></p>
+          <label class="form-label small fw-semibold">Catatan Admin (opsional)</label>
+          <textarea name="catatan_admin" class="form-control" rows="2"></textarea>
+        </div>
+        <div class="modal-footer">
+          <button type="button" class="btn btn-light btn-sm" data-bs-dismiss="modal">Batal</button>
+          <button type="submit" class="btn btn-success btn-sm">Konfirmasi Draft Ulang</button>
+        </div>
+      </form>
+    </div>
+  </div>
+</div>
+
+<div class="modal fade" id="modalDecline<?= $p['id'] ?>" tabindex="-1">
+  <div class="modal-dialog">
+    <div class="modal-content">
+      <div class="modal-header">
+        <h6 class="modal-title fw-semibold text-danger">Tolak Permintaan</h6>
+        <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+      </div>
+      <form action="<?= base_url("draft-ulang/decline/{$p['id']}") ?>" method="post">
+        <?= csrf_field() ?>
+        <div class="modal-body">
+          <label class="form-label small fw-semibold">Alasan Penolakan</label>
+          <textarea name="catatan_admin" class="form-control" rows="2" required></textarea>
+        </div>
+        <div class="modal-footer">
+          <button type="button" class="btn btn-light btn-sm" data-bs-dismiss="modal">Batal</button>
+          <button type="submit" class="btn btn-danger btn-sm">Tolak Permintaan</button>
+        </div>
+      </form>
+    </div>
+  </div>
+</div>
+<?php endforeach; ?>
 <?php endif; ?>
 
 <!-- Histori Semua Permintaan -->

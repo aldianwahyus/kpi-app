@@ -60,9 +60,9 @@
         <?php foreach ($users as $u): ?>
         <?php
         $roleLabels = [
-            'manajer'     => ['Manajer',      '#FEF3C7','#92400E'],
-            'kepala_unit' => ['Kepala Unit',   '#E0F2FE','#0369A1'],
-            'hr'          => ['HR Manager',    '#D1FAE5','#065F46'],
+            'drafter'  => ['Drafter',      '#FEF3C7','#92400E'],
+            'approver' => ['Approver',     '#E0F2FE','#0369A1'],
+            'hr'       => ['HR Manager',   '#D1FAE5','#065F46'],
         ];
         $rl = $roleLabels[$u['role']] ?? [$u['role'],'#f0f0f0','#888'];
         ?>

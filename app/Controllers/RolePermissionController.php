@@ -7,7 +7,7 @@ class RolePermissionController extends BaseController
 {
     protected RolePermissionModel $permissionModel;
 
-    protected array $roles = ['hr','manajer','kepala_unit','pegawai'];
+    protected array $roles = ['hr','drafter','approver','pegawai'];
     // admin tidak ditampilkan karena selalu full access
 
     public function __construct()

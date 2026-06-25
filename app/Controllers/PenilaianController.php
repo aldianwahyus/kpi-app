@@ -38,7 +38,7 @@ class PenilaianController extends BaseController
         $userPegawaiId= session()->get('pegawai_id');
 
         $pegawai = [];
-        if ($role === 'kepala_unit' && $userPegawaiId) {
+        if ($role === 'approver' && $userPegawaiId) {
             $userPegawai = $this->pegawaiModel->find($userPegawaiId);
             $divisiId    = $userPegawai['divisi_id'] ?? null;
             if ($divisiId) {
@@ -328,20 +328,6 @@ class PenilaianController extends BaseController
         );
 
         return $result;
-    }
-
-    protected function canAccessPegawai(int $pegawaiId): bool
-    {
-        if (in_array(session()->get('role'), ['admin', 'hr'])) return true;
-        $u = $this->pegawaiModel->find(session()->get('pegawai_id'));
-        $t = $this->pegawaiModel->find($pegawaiId);
-        return ($u && $t) ? $u['divisi_id'] == $t['divisi_id'] : false;
-    }
-
-    // Pastikan signature parameter sama dengan BaseController
-    protected function forbidden(string $message = 'Anda tidak memiliki akses.') 
-    { 
-        return $this->response->setStatusCode(403)->setBody($message); 
     }
 
     public function redraft(int $pegawai_id)

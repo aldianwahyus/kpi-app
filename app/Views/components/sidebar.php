@@ -1,11 +1,11 @@
 <?php 
 $role = session()->get('role'); 
 
-$roleLabels = [
-    'admin'    => 'Admin',
+$role_labels = [
+    'admin'    => 'Administrator',
     'hr'       => 'HR Manager',
-    'drafter'  => 'Drafter',
-    'approver' => 'Approver',
+    'drafter'  => 'Drafter (Input Nilai)',
+    'approver' => 'Approver (Review Nilai)',
     'pegawai'  => 'Pegawai',
 ];
 

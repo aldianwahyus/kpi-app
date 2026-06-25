@@ -15,12 +15,13 @@
 
 <?php
 $role_config = [
-    'admin'   => ['label'=>'Admin',      'bg'=>'#DBEAFE','color'=>'#1D4ED8','border'=>'#2E75B6'],
-    'hr'      => ['label'=>'HR Manager', 'bg'=>'#D1FAE5','color'=>'#065F46','border'=>'#70AD47'],
-    'manajer' => ['label'=>'Manajer',    'bg'=>'#FEF3C7','color'=>'#92400E','border'=>'#BF9000'],
-    'pegawai' => ['label'=>'Pegawai',    'bg'=>'#F3E8FF','color'=>'#6B21A8','border'=>'#9B59B6'],
+    'admin'    => ['label'=>'Admin',      'bg'=>'#DBEAFE','color'=>'#1D4ED8','border'=>'#2E75B6'],
+    'hr'       => ['label'=>'HR Manager', 'bg'=>'#D1FAE5','color'=>'#065F46','border'=>'#70AD47'],
+    'drafter'  => ['label'=>'Drafter',    'bg'=>'#FEF3C7','color'=>'#92400E','border'=>'#BF9000'],
+    'approver' => ['label'=>'Approver',   'bg'=>'#E0F2FE','color'=>'#0369A1','border'=>'#0EA5E9'],
+    'pegawai'  => ['label'=>'Pegawai',    'bg'=>'#F3E8FF','color'=>'#6B21A8','border'=>'#9B59B6'],
 ];
-$role_order = ['admin','hr','manajer','pegawai'];
+$role_order = ['admin','hr','drafter','approver','pegawai'];
 ?>
 
 <?php foreach ($role_order as $role): ?>

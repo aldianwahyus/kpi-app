@@ -26,7 +26,7 @@ abstract class BaseController extends Controller
      */
     protected function canAccessPegawai(int $pegawaiId): bool
     {
-        $role      = session()->get('role');
+        $role        = session()->get('role');
         $myPegawaiId = session()->get('pegawai_id');
 
         // Admin & HR bisa akses semua
@@ -34,8 +34,8 @@ abstract class BaseController extends Controller
             return true;
         }
 
-        // Manajer & kepala_unit hanya bisa akses pegawai di divisi yang sama
-        if (in_array($role, ['manajer', 'kepala_unit'])) {
+        // Drafter & Approver hanya bisa akses pegawai di divisi yang sama
+        if (in_array($role, ['drafter', 'approver'])) {
             if (!$myPegawaiId) return false;
 
             $pegawaiModel = new \App\Models\PegawaiModel();

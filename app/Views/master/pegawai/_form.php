@@ -125,7 +125,7 @@
           <div class="mb-3">
             <label class="form-label fw-semibold small">Role</label>
             <select name="role" class="form-select form-select-sm">
-              <?php foreach (['pegawai'=>'Pegawai','manajer'=>'Manajer','hr'=>'HR Manager','admin'=>'Admin'] as $val => $lbl): ?>
+              <?php foreach (['pegawai'=>'Pegawai','drafter'=>'Drafter','approver'=>'Approver','hr'=>'HR Manager','admin'=>'Admin'] as $val => $lbl): ?>
                 <option value="<?= $val ?>"
                   <?= old('role', $user['role'] ?? 'pegawai') === $val ? 'selected' : '' ?>>
                   <?= $lbl ?>

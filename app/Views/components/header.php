@@ -2,7 +2,7 @@
 $role       = session()->get('role');
 $nama       = session()->get('nama');
 $initial    = strtoupper(substr($nama ?? 'U', 0, 1));
-$role_label = ['admin'=>'Admin','hr'=>'HR Manager','manajer'=>'Manajer','pegawai'=>'Pegawai'];
+$role_label = ['admin'=>'Admin','hr'=>'HR Manager','drafter'=>'Drafter','approver'=>'Approver','pegawai'=>'Pegawai'];
 ?>
 <div id="header">
   <button id="sidebarToggle" class="btn btn-sm btn-light d-md-none border-0">

@@ -35,7 +35,7 @@ class NotifikasiController extends BaseController
             ->select('u.*, p.jabatan, p.divisi_id, d.nama as divisi')
             ->join('pegawai p', 'p.id = u.pegawai_id', 'left')
             ->join('divisi d', 'd.id = p.divisi_id', 'left')
-            ->whereIn('u.role', ['manajer','kepala_unit','hr'])
+            ->whereIn('u.role', ['drafter','approver','hr'])
             ->where('u.is_active', 1)
             ->get()->getResultArray();
 
@@ -108,7 +108,7 @@ class NotifikasiController extends BaseController
         $users = $this->userModel->db->table('users u')
             ->select('u.*, p.divisi_id')
             ->join('pegawai p', 'p.id = u.pegawai_id', 'left')
-            ->whereIn('u.role', ['manajer','kepala_unit','hr'])
+            ->whereIn('u.role', ['drafter','approver','hr'])
             ->where('u.is_active', 1)
             ->whereNotNull('u.email')
             ->get()->getResultArray();

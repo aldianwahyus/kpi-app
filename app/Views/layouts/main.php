@@ -100,7 +100,8 @@
     }
     .role-admin    { background: #DBEAFE; color: #1D4ED8; }
     .role-hr       { background: #D1FAE5; color: #065F46; }
-    .role-manajer  { background: #FEF3C7; color: #92400E; }
+    .role-drafter  { background: #FEF3C7; color: #92400E; }
+    .role-approver { background: #E0F2FE; color: #0369A1; }
     .role-pegawai  { background: #F3E8FF; color: #6B21A8; }
 
     /* ── Main content ── */

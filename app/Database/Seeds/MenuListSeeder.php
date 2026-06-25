@@ -11,6 +11,13 @@ class MenuListSeeder extends Seeder
         $this->db->table('menu_list')->truncate();
 
         $data = [
+            // Header grup yang dicek langsung oleh sidebar (canShow)
+            // WAJIB ada agar section besar tidak selalu tersembunyi untuk non-admin
+            ['kode_menu'=>'master_data', 'nama_menu'=>'Master Data (Grup)', 'grup'=>'Grup Section', 'urutan'=>1],
+            ['kode_menu'=>'tools',       'nama_menu'=>'Tools (Grup)',       'grup'=>'Grup Section', 'urutan'=>2],
+            ['kode_menu'=>'laporan',     'nama_menu'=>'Laporan (Grup)',     'grup'=>'Grup Section', 'urutan'=>3],
+            ['kode_menu'=>'rubrik',      'nama_menu'=>'Rubrik Saya (Grup)', 'grup'=>'Grup Section', 'urutan'=>4],
+
             // Penilaian
             ['kode_menu'=>'penilaian',       'nama_menu'=>'Input Penilaian',       'grup'=>'Penilaian', 'urutan'=>1],
             ['kode_menu'=>'penilaian_unit',  'nama_menu'=>'KPI Unit',              'grup'=>'Penilaian', 'urutan'=>2],
@@ -42,10 +49,10 @@ class MenuListSeeder extends Seeder
         $menus = $this->db->table('menu_list')->get()->getResultArray();
         $defaultPermission = [
             'admin'    => 'all',
-            'hr'       => ['penilaian','penilaian_unit','rekap','approval','master_periode','master_kpidivisi','pegawai','laporan_pdf','laporan_excel','notifikasi','ai'],
-            'drafter'  => ['penilaian'], 
-            'approver' => ['penilaian', 'approval', 'rekap'], 
-            'pegawai'  => ['rubrik'], 
+            'hr'       => ['master_data','tools','laporan','penilaian','penilaian_unit','rekap','approval','master_periode','master_kpidivisi','pegawai','laporan_pdf','laporan_excel','notifikasi','ai'],
+            'drafter'  => ['penilaian'],
+            'approver' => ['penilaian', 'approval', 'rekap'],
+            'pegawai'  => ['rubrik'],
         ];
 
         $rows = [];

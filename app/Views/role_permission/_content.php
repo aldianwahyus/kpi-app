@@ -21,10 +21,10 @@
 <div class="d-flex gap-2 mb-3">
   <?php
   $roleLabels = [
-      'hr'          => 'HR Manager',
-      'manajer'     => 'Manajer',
-      'kepala_unit' => 'Kepala Unit',
-      'pegawai'     => 'Pegawai',
+      'hr'       => 'HR Manager',
+      'drafter'  => 'Drafter',
+      'approver' => 'Approver',
+      'pegawai'  => 'Pegawai',
   ];
   ?>
   <?php foreach ($roles as $r): ?>

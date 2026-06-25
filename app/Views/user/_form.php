@@ -65,10 +65,11 @@
           </label>
           <select name="role" class="form-select form-select-sm" required>
             <?php foreach ([
-                'pegawai' => 'Pegawai',
-                'manajer' => 'Manajer',
-                'hr'      => 'HR Manager',
-                'admin'   => 'Admin',
+                'pegawai'  => 'Pegawai',
+                'drafter'  => 'Drafter',
+                'approver' => 'Approver',
+                'hr'       => 'HR Manager',
+                'admin'    => 'Admin',
             ] as $val => $lbl): ?>
               <option value="<?= $val ?>"
                 <?= old('role', $user['role'] ?? 'pegawai') === $val

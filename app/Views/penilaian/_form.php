@@ -37,6 +37,12 @@
 
 <?php
 $current = $statusApproval['current'] ?? 'draft';
+$role = session()->get('role'); // Ambil role dari session
+$isAdmin = ($role === 'admin');
+$isDrafter = ($role === 'drafter');
+$isApprover = ($role === 'approver');
+$isRedraftRequested = $is_redraft_requested ?? 0; // Variabel dari controller
+
 $bannerConfig = [
     'draft'     => ['bg'=>'bg-secondary', 'label'=>'DRAFT — Belum disubmit'],
     'submitted' => ['bg'=>'bg-warning text-dark', 'label'=>'SUBMITTED — Menunggu Approval'],
@@ -44,7 +50,6 @@ $bannerConfig = [
     'rejected'  => ['bg'=>'bg-danger', 'label'=>'REJECTED — Ditolak'],
 ];
 $bc = $bannerConfig[$current] ?? ['bg'=>'bg-secondary', 'label'=>'UNKNOWN'];
-$isAdmin = (session()->get('role') === 'admin'); // Shortcut flag penentu Admin
 ?>
 
 <div class="alert alert-info d-flex justify-content-between align-items-center mb-4">

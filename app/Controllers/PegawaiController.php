@@ -211,7 +211,7 @@ class PegawaiController extends BaseController
             'G' => 'Tanggal Masuk (YYYY-MM-DD)',
             'H' => 'Email (untuk akun login)',
             'I' => 'Password (default: pegawai123)',
-            'J' => 'Role (admin/hr/manajer/pegawai)',
+            'J' => 'Role (admin/hr/drafter/approver/pegawai)',
         ];
 
         foreach ($headers as $col => $label) {
@@ -231,7 +231,7 @@ class PegawaiController extends BaseController
             ['1234567890','Budi Santoso','Staff','Unit Kredit','DIV-HCD',
             'III/A','2020-01-15','budi@email.com','budi123','pegawai'],
             ['0987654321','Siti Rahayu','Kepala Unit','Unit Audit','DIV-IA',
-            'III/B','2018-06-01','siti@email.com','siti123','manajer'],
+            'III/B','2018-06-01','siti@email.com','siti123','approver'],
         ];
 
         foreach ($contoh as $i => $row) {

@@ -63,7 +63,7 @@ class UserController extends BaseController
             'nama'     => 'required',
             'email'    => 'required|valid_email|is_unique[users.email]',
             'password' => 'required|min_length[6]',
-            'role'     => 'required|in_list[admin,hr,manajer,pegawai]',
+            'role'     => 'required|in_list[admin,hr,drafter,approver,pegawai]',
         ])) {
             return redirect()->back()->withInput()
                              ->with('errors', $this->validator->getErrors());
@@ -112,8 +112,7 @@ class UserController extends BaseController
         if (!$this->validate([
             'nama'  => 'required',
             'email' => $emailRule,
-            // BUG FIX: Tambahkan 'kepala_unit' ke dalam in_list
-            'role'  => 'required|in_list[admin,hr,manajer,kepala_unit,pegawai]',
+            'role'  => 'required|in_list[admin,hr,drafter,approver,pegawai]',
         ])) {
             return redirect()->back()->withInput()
                              ->with('errors', $this->validator->getErrors());
