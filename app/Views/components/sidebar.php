@@ -1,12 +1,12 @@
 <?php 
 $role = session()->get('role'); 
 
-$role_labels = [
-    'admin'      => 'Admin',
-    'hr'         => 'HR Manager',
-    'manajer'    => 'Manajer',
-    'kepala_unit'=> 'Kepala Unit',
-    'pegawai'    => 'Pegawai',
+$roleLabels = [
+    'admin'    => 'Admin',
+    'hr'       => 'HR Manager',
+    'drafter'  => 'Drafter',
+    'approver' => 'Approver',
+    'pegawai'  => 'Pegawai',
 ];
 
 // --- INISIALISASI PERMISSION MODEL ---
@@ -78,18 +78,50 @@ $canShow = function($kode) use ($permModel, $role) {
     </div>
 
     <!-- PENILAIAN -->
-    <?php if ($canShow('penilaian')): ?>
-    <li class="nav-section mt-3">
-      <a href="#collapsePenilaian" data-bs-toggle="collapse" role="button" aria-expanded="false" style="color:inherit; text-decoration:none; display:flex; justify-content:between; width:100%; font-weight:600;">
-        <span>Penilaian</span>
-        <i class="ti ti-chevron-down ms-auto arrow-icon"></i>
-      </a>
-    </li>
-    <div class="collapse" id="collapsePenilaian">
-      <li class="nav-item"><a href="<?= base_url('penilaian') ?>" style="display:flex; align-items:center; gap:8px; text-decoration:none;"><i class="ti ti-clipboard-list"></i> Input Penilaian</a></li>
-      <li class="nav-item"><a href="<?= base_url('rekap') ?>" style="display:flex; align-items:center; gap:8px; text-decoration:none;"><i class="ti ti-table"></i> Rekap & Ranking</a></li>
-    </div>
-    <?php endif; ?>
+      <?php 
+      // Header section muncul jika user punya salah satu dari akses di bawah ini
+      if ($canShow('penilaian') || $canShow('rekap')): 
+      ?>
+      <li class="nav-section mt-3">
+        <a href="#collapsePenilaian" data-bs-toggle="collapse" role="button" aria-expanded="false" style="color:inherit; text-decoration:none; display:flex; justify-content:between; width:100%; font-weight:600;">
+          <span>Penilaian</span>
+          <i class="ti ti-chevron-down ms-auto arrow-icon"></i>
+        </a>
+      </li>
+      <div class="collapse" id="collapsePenilaian">
+        
+        <?php if ($canShow('penilaian')): ?>
+        <li class="nav-item">
+          <a href="<?= base_url('penilaian') ?>" style="display:flex; align-items:center; gap:8px; text-decoration:none;">
+            <i class="ti ti-clipboard-list"></i> Input Penilaian
+          </a>
+        </li>
+        <?php endif; ?>
+
+        <?php if ($canShow('rekap')): ?>
+        <li class="nav-item">
+          <a href="<?= base_url('rekap') ?>" style="display:flex; align-items:center; gap:8px; text-decoration:none;">
+            <i class="ti ti-table"></i> Rekap & Ranking
+          </a>
+        </li>
+        <?php endif; ?>
+        <?php if ($role === 'admin'): ?>
+        <li class="nav-item">
+          <a href="<?= base_url('draft-ulang') ?>">
+            <i class="ti ti-refresh-dot"></i> Draft Ulang
+            <?php
+            $pendingCount = (new \App\Models\DraftUlangRequestModel())->getCountPending();
+            if ($pendingCount > 0):
+            ?>
+            <span class="badge bg-warning text-dark ms-1" style="font-size:10px">
+              <?= $pendingCount ?>
+            </span>
+            <?php endif; ?>
+          </a>
+        </li>
+        <?php endif; ?>
+      </div>
+      <?php endif; ?>
 
     <!-- RUBRIK SAYA -->
     <?php if ($canShow('rubrik')): ?>

@@ -18,9 +18,6 @@ class UserController extends BaseController
     // ── Daftar User ──────────────────────────────────────────
     public function index(): string
     {
-        $check = $this->checkMenuAccess('penilaian');
-        if ($check !== true) return $check;
-        
         $users = $this->userModel->db->table('users u')
             ->select('u.*, p.nama as nama_pegawai,
                       p.jabatan, p.nip,
@@ -31,7 +28,7 @@ class UserController extends BaseController
             ->orderBy('u.nama', 'ASC')
             ->get()->getResultArray();
 
-        // Kelompokkan per role
+        // Kelompokkan per role (Tetap dipertahankan agar tidak merusak View)
         $grouped = [];
         foreach ($users as $u) {
             $grouped[$u['role']][] = $u;
@@ -115,7 +112,8 @@ class UserController extends BaseController
         if (!$this->validate([
             'nama'  => 'required',
             'email' => $emailRule,
-            'role'  => 'required|in_list[admin,hr,manajer,pegawai]',
+            // BUG FIX: Tambahkan 'kepala_unit' ke dalam in_list
+            'role'  => 'required|in_list[admin,hr,manajer,kepala_unit,pegawai]',
         ])) {
             return redirect()->back()->withInput()
                              ->with('errors', $this->validator->getErrors());
@@ -126,6 +124,8 @@ class UserController extends BaseController
             'nama'       => $this->request->getPost('nama'),
             'email'      => $this->request->getPost('email'),
             'role'       => $this->request->getPost('role'),
+            // Tambahkan ini jika di form ada input status aktif
+            'is_active'  => $this->request->getPost('is_active') !== null ? (int)$this->request->getPost('is_active') : 1,
         ];
 
         // Update password hanya jika diisi

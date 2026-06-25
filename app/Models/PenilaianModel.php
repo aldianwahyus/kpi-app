@@ -15,6 +15,7 @@ class PenilaianModel extends Model
         'status', 'submitted_at',
         'approved_by', 'approved_at', 'reject_note',
         'input_by', 'verified_by', 'verified_at',
+        'is_redraft_requested', 'redraft_requested_by' // <-- Tambahkan dua baris ini
     ];
     protected $useTimestamps = true;
 

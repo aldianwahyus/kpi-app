@@ -15,8 +15,6 @@ class PeriodeController extends BaseController
     // ── Daftar Periode ───────────────────────────────────────
     public function index(): string
     {
-        $check = $this->checkMenuAccess('penilaian');
-        if ($check !== true) return $check;
         
         return view('layouts/main', [
             'title'   => 'Periode Penilaian',

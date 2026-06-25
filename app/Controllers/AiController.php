@@ -27,8 +27,6 @@ class AiController extends BaseController
     // ── Halaman Chat AI ──────────────────────────────────────
     public function index(): string
     {
-        $check = $this->checkMenuAccess('penilaian');
-        if ($check !== true) return $check;
         
         return view('layouts/main', [
             'title'   => 'AI Asisten KPI',

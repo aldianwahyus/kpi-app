@@ -83,4 +83,20 @@ class AuditService
             ? 'Tidak ada perubahan'
             : implode(', ', $changes);
     }
+
+    public function logDraftUlang(
+    int $penilaianId,
+    string $alasan,
+    string $requestedByNama,
+    string $confirmedByNama
+    ): void {
+        $this->log(
+            'penilaian',
+            $penilaianId,
+            'draft_ulang',
+            ['status' => 'approved'],
+            ['status' => 'draft'],
+            "Draft ulang dikonfirmasi oleh $confirmedByNama (diminta oleh $requestedByNama). Alasan: $alasan"
+        );
+    }
 }

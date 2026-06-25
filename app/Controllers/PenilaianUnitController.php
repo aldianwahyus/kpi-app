@@ -26,10 +26,7 @@ class PenilaianUnitController extends BaseController
 
     // ── Daftar Divisi ────────────────────────────────────────
     public function index(): string
-    {
-        $check = $this->checkMenuAccess('penilaian');
-        if ($check !== true) return $check;
-        
+    { 
         $periodeAktif = $this->periodeModel->getAktif();
         $grouped      = $this->divisiModel->getGroupedByDirektorat();
         $rekap        = [];

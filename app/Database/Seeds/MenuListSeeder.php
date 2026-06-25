@@ -6,6 +6,10 @@ class MenuListSeeder extends Seeder
 {
     public function run(): void
     {
+        // 1. Kosongkan tabel agar data lama terhapus (mencegah error duplikasi)
+        $this->db->table('role_permission')->truncate();
+        $this->db->table('menu_list')->truncate();
+
         $data = [
             // Penilaian
             ['kode_menu'=>'penilaian',       'nama_menu'=>'Input Penilaian',       'grup'=>'Penilaian', 'urutan'=>1],
@@ -37,11 +41,11 @@ class MenuListSeeder extends Seeder
         // Default permission per role
         $menus = $this->db->table('menu_list')->get()->getResultArray();
         $defaultPermission = [
-            'admin'       => 'all',
-            'hr'          => ['penilaian','penilaian_unit','rekap','approval','master_periode','master_kpidivisi','pegawai','laporan_pdf','laporan_excel','notifikasi','ai'],
-            'manajer'     => ['penilaian','rekap'],
-            'kepala_unit' => ['penilaian','rekap','approval'],
-            'pegawai'     => ['rekap'],
+            'admin'    => 'all',
+            'hr'       => ['penilaian','penilaian_unit','rekap','approval','master_periode','master_kpidivisi','pegawai','laporan_pdf','laporan_excel','notifikasi','ai'],
+            'drafter'  => ['penilaian'], 
+            'approver' => ['penilaian', 'approval', 'rekap'], 
+            'pegawai'  => ['rubrik'], 
         ];
 
         $rows = [];

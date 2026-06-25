@@ -49,15 +49,33 @@ $isAdmin = (session()->get('role') === 'admin'); // Shortcut flag penentu Admin
 
 <div class="alert alert-info d-flex justify-content-between align-items-center mb-4">
     <div>
-        <strong>Status Penilaian:</strong> 
+      <strong>Status Penilaian:</strong> 
         <span class="badge <?= $bc['bg'] ?>">
             <?= $bc['label'] ?>
         </span>
+
         <?php if ($current === 'rejected' && !empty($rejectNote)): ?>
-            <div class="text-danger small mt-1"><strong>Alasan Reject:</strong> <?= esc($rejectNote) ?></div>
+          <div class="text-danger small mt-1">
+            <strong>Alasan Reject:</strong> <?= esc($rejectNote) ?>
+          </div>
+        <?php endif; ?>
+
+        <?php if ($current === 'approved' && $role === 'approver'): ?>
+          <?php if ($statusApproval['has_pending_draft_request'] ?? false): ?>
+            <span class="badge" style="background:#FFF3CD;color:#7F6000;font-size:12px">
+              <i class="ti ti-clock me-1"></i> Menunggu konfirmasi Admin
+            </span>
+          <?php else: ?>
+            <button type="button"
+                    class="btn btn-outline-warning btn-sm"
+                    style="font-size:12px"
+                    data-bs-toggle="modal"
+                    data-bs-target="#modalDraftUlang">
+              <i class="ti ti-refresh-dot me-1"></i> Ajukan Draft Ulang
+            </button>
+          <?php endif; ?>
         <?php endif; ?>
     </div>
-
     <div>
         <?php if ($current === 'draft' || $current === 'rejected'): ?>
             <form action="<?= base_url('penilaian/submit/' . $pegawai['id']) ?>" method="POST" class="d-inline" onsubmit="return confirm('Apakah Anda yakin ingin mengirim penilaian ini untuk diapprove?')">
@@ -111,6 +129,40 @@ $isAdmin = (session()->get('role') === 'admin'); // Shortcut flag penentu Admin
   </div>
 </div>
 
+<!-- Modal Request Draft Ulang -->
+<div class="modal fade" id="modalDraftUlang" tabindex="-1">
+  <div class="modal-dialog">
+    <div class="modal-content">
+      <div class="modal-header">
+        <h6 class="modal-title fw-semibold text-warning">
+          <i class="ti ti-refresh-dot me-1"></i> Ajukan Draft Ulang
+        </h6>
+        <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+      </div>
+      <form action="<?= base_url("draft-ulang/request-pegawai/{$pegawai['id']}") ?>" method="post">
+        <?= csrf_field() ?>
+        <div class="modal-body">
+          <div class="alert alert-warning py-2" style="font-size:12px">
+            Permintaan akan dikirim ke <strong>Administrator</strong> untuk konfirmasi.
+            Status tidak langsung berubah sampai dikonfirmasi.
+          </div>
+          <label class="form-label fw-semibold small">
+            Alasan Draft Ulang <span class="text-danger">*</span>
+          </label>
+          <textarea name="alasan" class="form-control" rows="3"
+                    placeholder="Jelaskan alasan perlu draft ulang..." required></textarea>
+        </div>
+        <div class="modal-footer">
+          <button type="button" class="btn btn-light btn-sm" data-bs-dismiss="modal">Batal</button>
+          <button type="submit" class="btn btn-warning btn-sm">
+            <i class="ti ti-send me-1"></i> Kirim Permintaan
+          </button>
+        </div>
+      </form>
+    </div>
+  </div>
+</div>
+
 <?php if (!$isAdmin): ?>
 <div class="alert py-2 mb-3 d-flex align-items-center gap-2" style="background:#FFF3CD;border:1px solid #BF9000;font-size:13px">
   <i class="ti ti-info-circle" style="color:#BF9000"></i>
@@ -119,6 +171,7 @@ $isAdmin = (session()->get('role') === 'admin'); // Shortcut flag penentu Admin
   </span>
 </div>
 <?php endif; ?>
+
 
 <div class="alert py-2 mb-3 d-flex align-items-center gap-2" style="background:#E6F1FB;border:1px solid #2E75B6;font-size:13px">
   <i class="ti ti-info-circle" style="color:#1F4E79"></i>
@@ -204,10 +257,19 @@ $isAdmin = (session()->get('role') === 'admin'); // Shortcut flag penentu Admin
             </td>
             <td class="text-center">
               <input type="number" name="realisasi[<?= $kpi['kpi_id'] ?>]" 
-                     class="form-control form-control-sm realisasi-input text-center" 
-                     value="<?= $ex ? $ex['realisasi'] : '' ?>" 
-                     step="any" placeholder="0.00" required
-                     <?= (($current === 'submitted' || $current === 'approved') && !$isAdmin) ? 'disabled' : '' ?>>
+              class="form-control"
+              value="<?= $ex ? $ex['realisasi'] : '' ?>" 
+              <?php 
+              $role = session()->get('role');
+              $currentStatus = $statusApproval['current'] ?? 'draft';
+              
+              // Drafter & Approver hanya bisa mengetik/mengubah nilai selama statusnya DRAFT.
+              if ($role !== 'admin') {
+                  if ($currentStatus !== 'draft') {
+                      echo 'readonly';
+                  }
+              }
+              ?>>
             </td>
             <td class="text-center">
               <input type="number" name="skor[<?= $kpi['kpi_id'] ?>]" 

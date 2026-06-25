@@ -13,7 +13,7 @@ class AuthController extends BaseController
         $this->userModel = new UserModel();
     }
 
-    public function login(): string|RedirectResponse
+    public function login()
     {
         if (session()->get('logged_in')) {
             return redirect()->to('/dashboard');
