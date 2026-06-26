@@ -112,7 +112,7 @@
             <a href="<?= base_url("master/kpi-divisi/delete/{$kpi['id']}") ?>"
                class="btn btn-outline-danger btn-sm"
                style="padding:2px 7px"
-               onclick="return confirm('Hapus KPI ini dari divisi?')">
+               onclick="return confirmAction(event, { title: 'Hapus KPI', text: 'Hapus KPI ini dari divisi?', icon: 'warning', confirmText: 'Ya, Hapus', danger: true })">
               <i class="ti ti-trash" style="font-size:13px"></i>
             </a>
           </div>

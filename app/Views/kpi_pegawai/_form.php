@@ -138,7 +138,7 @@
             <a href="<?= base_url("kpi-pegawai/delete/{$kpi['id']}") ?>"
                class="btn btn-outline-danger btn-sm"
                style="padding:2px 7px"
-               onclick="return confirm('Hapus KPI ini?')">
+               onclick="return confirmAction(event, { title: 'Hapus KPI', text: 'Hapus KPI ini?', confirmText: 'Ya, Hapus', danger: true })">
               <i class="ti ti-trash" style="font-size:13px"></i>
             </a>
           </div>
@@ -309,7 +309,7 @@
                   data-bs-dismiss="modal">Batal</button>
           <button type="submit"
                   class="btn btn-primary btn-sm"
-                  onclick="return confirm('Yakin? KPI existing akan diganti!')">
+                  onclick="return confirmAction(event, { title: 'Salin KPI', text: 'Yakin? KPI yang sudah ada akan diganti dengan salinan baru.', confirmText: 'Ya, Salin', danger: true })">
             <i class="ti ti-copy me-1"></i> Copy KPI
           </button>
         </div>

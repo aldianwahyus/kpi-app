@@ -116,7 +116,7 @@
                 <a href="<?= base_url("pegawai/delete/{$p['id']}") ?>"
                    class="btn btn-outline-danger"
                    style="padding:2px 8px;font-size:11px"
-                   onclick="return confirm('Hapus pegawai <?= esc($p['nama']) ?>?')">
+                   onclick="return confirmAction(event, { title: 'Hapus Pegawai', text: 'Hapus pegawai <?= esc($p['nama'], 'js') ?>?', confirmText: 'Ya, Hapus', danger: true })">
                   <i class="ti ti-trash"></i>
                 </a>
               </div>

@@ -13,7 +13,7 @@
     <?= csrf_field() ?>
     <button type="submit"
             class="btn btn-primary btn-sm"
-            onclick="return confirm('Kirim reminder ke semua user?')">
+            onclick="return confirmAction(event, { title: 'Kirim Reminder', text: 'Kirim reminder ke semua user?', icon: 'question', confirmText: 'Ya, Kirim' })">
       <i class="ti ti-send me-1"></i>
       Kirim Reminder ke Semua
     </button>

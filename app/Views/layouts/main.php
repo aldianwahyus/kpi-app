@@ -11,6 +11,8 @@
   <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
   <!-- Tabler Icons -->
   <link href="https://cdn.jsdelivr.net/npm/@tabler/icons-webfont@2.44.0/tabler-icons.min.css" rel="stylesheet">
+  <!-- SweetAlert2 -->
+  <script src="https://cdn.jsdelivr.net/npm/sweetalert2@11"></script>
   <!-- Chart.js -->
 
   <link rel="icon" type="image/png"
@@ -146,21 +148,6 @@
 
 <!-- ── CONTENT ── -->
 <div id="main-content">
-  <?php if (session()->getFlashdata('success')): ?>
-    <div class="alert alert-success alert-dismissible d-flex align-items-center gap-2 py-2 mb-3">
-      <i class="ti ti-circle-check fs-5"></i>
-      <?= session()->getFlashdata('success') ?>
-      <button type="button" class="btn-close ms-auto" data-bs-dismiss="alert"></button>
-    </div>
-  <?php endif; ?>
-  <?php if (session()->getFlashdata('error')): ?>
-    <div class="alert alert-danger alert-dismissible d-flex align-items-center gap-2 py-2 mb-3">
-      <i class="ti ti-alert-circle fs-5"></i>
-      <?= session()->getFlashdata('error') ?>
-      <button type="button" class="btn-close ms-auto" data-bs-dismiss="alert"></button>
-    </div>
-  <?php endif; ?>
-
   <?= $content ?? '' ?>
 </div>
 
@@ -178,6 +165,80 @@
       link.classList.add('active');
     }
   });
+
+  // ── SweetAlert2: Toast notifikasi dari flash message session ──
+  const KpiToast = Swal.mixin({
+    toast: true,
+    position: 'top-end',
+    showConfirmButton: false,
+    timer: 3500,
+    timerProgressBar: true,
+    didOpen: (toast) => {
+      toast.addEventListener('mouseenter', Swal.stopTimer);
+      toast.addEventListener('mouseleave', Swal.resumeTimer);
+    }
+  });
+
+  <?php if (session()->getFlashdata('success')): ?>
+    KpiToast.fire({
+      icon: 'success',
+      title: <?= json_encode(session()->getFlashdata('success')) ?>,
+    });
+  <?php endif; ?>
+
+  <?php if (session()->getFlashdata('error')): ?>
+    KpiToast.fire({
+      icon: 'error',
+      title: <?= json_encode(session()->getFlashdata('error')) ?>,
+    });
+  <?php endif; ?>
+
+  // ── SweetAlert2: Pengganti confirm() bawaan browser ──
+  // Dipasang sebagai window.confirmAction agar dapat dipanggil dari onclick/onsubmit
+  // pada elemen mana pun tanpa perlu mengubah struktur form/link yang sudah ada.
+  //
+  // Cara pakai pada link biasa (menggantikan onclick="return confirm('...')"):
+  //   onclick="return confirmAction(event, { text: 'Hapus data ini?' })"
+  //
+  // Cara pakai pada form submit (menggantikan onsubmit="return confirm('...')"):
+  //   onsubmit="return confirmAction(event, { text: '...', confirmText: 'Ya, Approve' })"
+  window.confirmAction = function (event, options) {
+    event.preventDefault();
+
+    const target = event.currentTarget;
+    const opts = Object.assign({
+      title: 'Konfirmasi',
+      text: 'Apakah Anda yakin?',
+      icon: 'warning',
+      confirmText: 'Ya, Lanjutkan',
+      cancelText: 'Batal',
+      danger: false,
+    }, options || {});
+
+    Swal.fire({
+      title: opts.title,
+      text: opts.text,
+      icon: opts.icon,
+      showCancelButton: true,
+      confirmButtonText: opts.confirmText,
+      cancelButtonText: opts.cancelText,
+      confirmButtonColor: opts.danger ? '#C00000' : '#2E75B6',
+      cancelButtonColor: '#6c757d',
+      reverseButtons: true,
+    }).then((result) => {
+      if (!result.isConfirmed) return;
+
+      if (target.tagName === 'FORM') {
+        target.submit();
+      } else if (target.tagName === 'A' && target.href) {
+        window.location.href = target.href;
+      } else if (target.tagName === 'BUTTON' && target.form) {
+        target.form.submit();
+      }
+    });
+
+    return false;
+  };
 </script>
 <?= $extra_js ?? '' ?>
 </body>

@@ -37,12 +37,6 @@
 
 <?php
 $current = $statusApproval['current'] ?? 'draft';
-$role = session()->get('role'); // Ambil role dari session
-$isAdmin = ($role === 'admin');
-$isDrafter = ($role === 'drafter');
-$isApprover = ($role === 'approver');
-$isRedraftRequested = $is_redraft_requested ?? 0; // Variabel dari controller
-
 $bannerConfig = [
     'draft'     => ['bg'=>'bg-secondary', 'label'=>'DRAFT — Belum disubmit'],
     'submitted' => ['bg'=>'bg-warning text-dark', 'label'=>'SUBMITTED — Menunggu Approval'],
@@ -50,6 +44,7 @@ $bannerConfig = [
     'rejected'  => ['bg'=>'bg-danger', 'label'=>'REJECTED — Ditolak'],
 ];
 $bc = $bannerConfig[$current] ?? ['bg'=>'bg-secondary', 'label'=>'UNKNOWN'];
+$isAdmin = (session()->get('role') === 'admin'); // Shortcut flag penentu Admin
 ?>
 
 <div class="alert alert-info d-flex justify-content-between align-items-center mb-4">
@@ -66,6 +61,20 @@ $bc = $bannerConfig[$current] ?? ['bg'=>'bg-secondary', 'label'=>'UNKNOWN'];
         <?php endif; ?>
 
         <?php if ($current === 'approved' && $role === 'approver'): ?>
+          <?php
+          $latestDeclined = $statusApproval['latest_declined_draft_request'] ?? null;
+          ?>
+          <?php if ($latestDeclined): ?>
+            <div class="alert alert-danger py-2 px-3 mt-2 mb-0" style="font-size:12px">
+              <i class="ti ti-alert-triangle me-1"></i>
+              <strong>Permintaan Draft Ulang Anda ditolak</strong> oleh Administrator
+              pada <?= date('d M Y H:i', strtotime($latestDeclined['confirmed_at'])) ?>.
+              <?php if (!empty($latestDeclined['catatan_admin'])): ?>
+                <br>Alasan: <?= esc($latestDeclined['catatan_admin']) ?>
+              <?php endif; ?>
+              <br><span class="text-muted">Selengkapnya dapat ditelusuri pada Histori Perubahan Nilai di bawah.</span>
+            </div>
+          <?php endif; ?>
           <?php if ($statusApproval['has_pending_draft_request'] ?? false): ?>
             <span class="badge" style="background:#FFF3CD;color:#7F6000;font-size:12px">
               <i class="ti ti-clock me-1"></i> Menunggu konfirmasi Admin
@@ -83,7 +92,7 @@ $bc = $bannerConfig[$current] ?? ['bg'=>'bg-secondary', 'label'=>'UNKNOWN'];
     </div>
     <div>
         <?php if ($current === 'draft' || $current === 'rejected'): ?>
-            <form action="<?= base_url('penilaian/submit/' . $pegawai['id']) ?>" method="POST" class="d-inline" onsubmit="return confirm('Apakah Anda yakin ingin mengirim penilaian ini untuk diapprove?')">
+            <form action="<?= base_url('penilaian/submit/' . $pegawai['id']) ?>" method="POST" class="d-inline" onsubmit="return confirmAction(event, { title: 'Submit untuk Approval', text: 'Apakah Anda yakin ingin mengirim penilaian ini untuk diapprove?', icon: 'question', confirmText: 'Ya, Submit' })">
                 <?= csrf_field() ?>
                 <button type="submit" class="btn btn-warning btn-sm">
                     <i class="ti ti-send"></i> Submit untuk Approval
@@ -91,8 +100,8 @@ $bc = $bannerConfig[$current] ?? ['bg'=>'bg-secondary', 'label'=>'UNKNOWN'];
             </form>
         <?php endif; ?>
 
-        <?php if ($current === 'submitted' && in_array($role, ['admin', 'hr', 'kepala_unit'])): ?>
-            <form action="<?= base_url('penilaian/approve/' . $pegawai['id']) ?>" method="POST" class="d-inline me-2" onsubmit="return confirm('Setujui penilaian ini?')">
+        <?php if ($current === 'submitted' && in_array($role, ['admin', 'hr', 'approver'])): ?>
+            <form action="<?= base_url('penilaian/approve/' . $pegawai['id']) ?>" method="POST" class="d-inline me-2" onsubmit="return confirmAction(event, { title: 'Approve Penilaian', text: 'Setujui penilaian ini?', icon: 'question', confirmText: 'Ya, Setujui' })">
                 <?= csrf_field() ?>
                 <button type="submit" class="btn btn-success btn-sm">
                     <i class="ti ti-check"></i> Approve
@@ -261,20 +270,18 @@ $bc = $bannerConfig[$current] ?? ['bg'=>'bg-secondary', 'label'=>'UNKNOWN'];
               <?= number_format($target, 2) ?>
             </td>
             <td class="text-center">
-              <input type="number" name="realisasi[<?= $kpi['kpi_id'] ?>]" 
-              class="form-control"
-              value="<?= $ex ? $ex['realisasi'] : '' ?>" 
-              <?php 
-              $role = session()->get('role');
+              <?php
+              $role          = session()->get('role');
               $currentStatus = $statusApproval['current'] ?? 'draft';
-              
-              // Drafter & Approver hanya bisa mengetik/mengubah nilai selama statusnya DRAFT.
-              if ($role !== 'admin') {
-                  if ($currentStatus !== 'draft') {
-                      echo 'readonly';
-                  }
-              }
-              ?>>
+
+              // Realisasi hanya dapat diisi/diubah ketika status Draft atau Rejected.
+              // Berlaku untuk seluruh role non-Administrator (Drafter maupun Approver).
+              $isRealisasiReadonly = ($role !== 'admin') && !in_array($currentStatus, ['draft', 'rejected']);
+              ?>
+              <input type="number" name="realisasi[<?= $kpi['kpi_id'] ?>]"
+                     class="form-control realisasi-input"
+                     value="<?= $ex ? $ex['realisasi'] : '' ?>"
+                     <?= $isRealisasiReadonly ? 'readonly style="background:#f8f9fa;cursor:not-allowed"' : '' ?>>
             </td>
             <td class="text-center">
               <input type="number" name="skor[<?= $kpi['kpi_id'] ?>]" 
@@ -303,7 +310,7 @@ $bc = $bannerConfig[$current] ?? ['bg'=>'bg-secondary', 'label'=>'UNKNOWN'];
   <?php endforeach; ?>
 
   <div class="d-flex gap-2 mt-2 mb-4">
-    <?php if ($current === 'draft' || $current === 'rejected' || $isAdmin): ?>
+    <?php if ($current !== 'approved'): ?>
         <button type="submit" class="btn btn-primary px-4">
           <i class="ti ti-device-floppy me-1"></i> Simpan Semua Penilaian
         </button>
@@ -333,12 +340,14 @@ $bc = $bannerConfig[$current] ?? ['bg'=>'bg-secondary', 'label'=>'UNKNOWN'];
           <?php foreach ($histori as $h): ?>
           <?php
           $actionConfig = [
-              'create'  => ['bg'=>'#C6EFCE','color'=>'#375623','label'=>'Buat'],
-              'update'  => ['bg'=>'#BDD7EE','color'=>'#1F4E79','label'=>'Edit'],
-              'submit'  => ['bg'=>'#FFF2CC','color'=>'#7F6000','label'=>'Submit'],
-              'approve' => ['bg'=>'#C6EFCE','color'=>'#375623','label'=>'Approve'],
-              'reject'  => ['bg'=>'#FCE4D6','color'=>'#C00000','label'=>'Reject'],
-              'delete'  => ['bg'=>'#FFCCCC','color'=>'#7B0000','label'=>'Hapus'],
+              'create'              => ['bg'=>'#C6EFCE','color'=>'#375623','label'=>'Buat'],
+              'update'              => ['bg'=>'#BDD7EE','color'=>'#1F4E79','label'=>'Edit'],
+              'submit'              => ['bg'=>'#FFF2CC','color'=>'#7F6000','label'=>'Submit'],
+              'approve'             => ['bg'=>'#C6EFCE','color'=>'#375623','label'=>'Approve'],
+              'reject'              => ['bg'=>'#FCE4D6','color'=>'#C00000','label'=>'Reject'],
+              'delete'              => ['bg'=>'#FFCCCC','color'=>'#7B0000','label'=>'Hapus'],
+              'draft_ulang'         => ['bg'=>'#E0E7FF','color'=>'#3730A3','label'=>'Draft Ulang Dikonfirmasi'],
+              'draft_ulang_ditolak' => ['bg'=>'#FCE4D6','color'=>'#C00000','label'=>'Draft Ulang Ditolak'],
           ];
           $ac = $actionConfig[$h['action']] ?? ['bg'=>'#f0f0f0','color'=>'#888','label'=>$h['action']];
           ?>

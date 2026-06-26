@@ -202,6 +202,11 @@ class DraftUlangController extends BaseController
             return redirect()->back()->with('error', 'Akses ditolak.');
         }
 
+        $req = $this->requestModel->find($requestId);
+        if (!$req || $req['status'] !== 'pending') {
+            return redirect()->back()->with('error', 'Permintaan tidak valid.');
+        }
+
         $catatan = trim($this->request->getPost('catatan_admin') ?? '');
 
         $this->requestModel->update($requestId, [
@@ -211,6 +216,34 @@ class DraftUlangController extends BaseController
             'confirmed_at'      => date('Y-m-d H:i:s'),
             'catatan_admin'     => $catatan,
         ]);
+
+        // Catat penolakan pada Histori Perubahan Nilai (Audit Trail) agar
+        // Approver dapat menelusuri alasan penolakan langsung dari halaman
+        // Input Penilaian pegawai yang bersangkutan.
+        $query = $this->penilaianModel
+            ->where('periode_id', $req['periode_id'])
+            ->where('status', 'approved');
+
+        if ($req['tipe'] === 'pegawai') {
+            $query->where('pegawai_id', $req['pegawai_id']);
+        }
+
+        $records = $query->findAll();
+
+        $keterangan = "Permintaan Draft Ulang dari {$req['requested_by_nama']} ditolak oleh "
+                    . session()->get('nama')
+                    . ($catatan ? ". Alasan: $catatan" : '. Tidak ada catatan tambahan.');
+
+        foreach ($records as $record) {
+            $this->auditService->log(
+                'penilaian',
+                $record['id'],
+                'draft_ulang_ditolak',
+                ['status' => 'approved'],
+                ['status' => 'approved'],
+                $keterangan
+            );
+        }
 
         return redirect()->to(base_url('draft-ulang'))
                          ->with('success', 'Permintaan draft ulang ditolak.');

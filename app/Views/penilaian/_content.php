@@ -127,9 +127,13 @@ foreach ($pegawai as $p) {
           <td class="text-center">
             <?php if ($periodeAktif): ?>
             <a href="<?= base_url("penilaian/form/{$p['id']}") ?>"
-               class="btn btn-sm btn-primary" style="font-size:12px">
-              <i class="ti ti-edit me-1"></i>
-              <?= $jumlah_kpi > 0 ? 'Update' : 'Input' ?>
+               class="btn btn-sm <?= $status === 'approved' ? 'btn-outline-secondary' : 'btn-primary' ?>" style="font-size:12px">
+              <?php if ($status === 'approved'): ?>
+                <i class="ti ti-eye me-1"></i> Lihat
+              <?php else: ?>
+                <i class="ti ti-edit me-1"></i>
+                <?= $jumlah_kpi > 0 ? 'Update' : 'Input' ?>
+              <?php endif; ?>
             </a>
             <?php else: ?>
             <span class="text-muted" style="font-size:12px">—</span>

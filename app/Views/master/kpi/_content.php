@@ -133,7 +133,7 @@ $perspektif_colors = [
                 <a href="<?= base_url("master/kpi/delete/{$kpi['id']}") ?>"
                    class="btn btn-xs btn-outline-danger"
                    style="padding:2px 8px;font-size:11px"
-                   onclick="return confirm('Hapus KPI ini?')">
+                   onclick="return confirmAction(event, { title: 'Hapus KPI', text: 'Hapus KPI ini?', confirmText: 'Ya, Hapus', danger: true })">
                   <i class="ti ti-trash"></i>
                 </a>
               </div>

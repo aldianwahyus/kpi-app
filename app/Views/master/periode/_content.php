@@ -28,7 +28,7 @@
   </div>
   <a href="<?= base_url("master/periode/status/{$periode_aktif['id']}/tutup") ?>"
      class="btn btn-sm btn-outline-danger"
-     onclick="return confirm('Tutup periode ini?')"
+     onclick="return confirmAction(event, { title: 'Tutup Periode', text: 'Tutup periode ini?', confirmText: 'Ya, Tutup', danger: true })"
      style="font-size:12px">
     <i class="ti ti-lock me-1"></i> Tutup Periode
   </a>
@@ -106,14 +106,14 @@
                   <a href="<?= base_url("master/periode/status/{$p['id']}/aktif") ?>"
                      class="btn btn-outline-success"
                      style="padding:2px 8px;font-size:11px"
-                     onclick="return confirm('Aktifkan periode ini?')">
+                     onclick="return confirmAction(event, { title: 'Aktifkan Periode', text: 'Aktifkan periode ini?', icon: 'question', confirmText: 'Ya, Aktifkan' })">
                     <i class="ti ti-player-play"></i> Aktifkan
                   </a>
                 <?php elseif ($p['status'] === 'aktif'): ?>
                   <a href="<?= base_url("master/periode/status/{$p['id']}/tutup") ?>"
                      class="btn btn-outline-warning"
                      style="padding:2px 8px;font-size:11px"
-                     onclick="return confirm('Tutup periode ini?')">
+                     onclick="return confirmAction(event, { title: 'Tutup Periode', text: 'Tutup periode ini?', confirmText: 'Ya, Tutup', danger: true })">
                     <i class="ti ti-lock"></i> Tutup
                   </a>
                 <?php elseif ($p['status'] === 'tutup'): ?>
@@ -134,7 +134,7 @@
                 <a href="<?= base_url("master/periode/delete/{$p['id']}") ?>"
                    class="btn btn-outline-danger"
                    style="padding:2px 8px;font-size:11px"
-                   onclick="return confirm('Hapus periode <?= esc($p['nama']) ?>?')">
+                   onclick="return confirmAction(event, { title: 'Hapus Periode', text: 'Hapus periode <?= esc($p['nama'], 'js') ?>?', confirmText: 'Ya, Hapus', danger: true })">
                   <i class="ti ti-trash"></i>
                 </a>
                 <?php endif; ?>

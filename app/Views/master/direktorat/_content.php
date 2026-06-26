@@ -48,7 +48,7 @@ $bobot_ok  = $bobot_pct == 100;
           <a href="<?= base_url("master/direktorat/delete/{$d['id']}") ?>"
             class="btn btn-outline-danger btn-sm"
             style="padding:2px 8px;font-size:12px"
-            onclick="return confirm('Hapus direktorat <?= esc($d['nama']) ?>?\n\nPastikan tidak ada unit kerja dan KPI Unit yang terhubung.')">
+            onclick="return confirmAction(event, { title: 'Hapus Direktorat', text: 'Hapus direktorat <?= esc($d['nama'], 'js') ?>? Pastikan tidak ada unit kerja dan KPI Unit yang terhubung.', confirmText: 'Ya, Hapus', danger: true })">
             <i class="ti ti-trash"></i>
           </a>
         </div>

@@ -81,7 +81,7 @@ $dir_i = 0;
               <a href="<?= base_url("master/unit-kerja/delete/{$d['id']}") ?>"
                  class="btn btn-outline-danger"
                  style="padding:2px 8px;font-size:11px"
-                 onclick="return confirm('Hapus unit kerja ini?')">
+                 onclick="return confirmAction(event, { title: 'Hapus Unit Kerja', text: 'Hapus unit kerja ini?', confirmText: 'Ya, Hapus', danger: true })">
                 <i class="ti ti-trash"></i>
               </a>
             </div>

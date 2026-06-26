@@ -103,7 +103,7 @@ $role_order = ['admin','hr','drafter','approver','pegawai'];
                  class="btn btn-outline-warning"
                  style="padding:2px 8px;font-size:11px"
                  title="Reset Password"
-                 onclick="return confirm('Reset password ke default?')">
+                 onclick="return confirmAction(event, { title: 'Reset Password', text: 'Reset password ke default?', icon: 'question', confirmText: 'Ya, Reset' })">
                 <i class="ti ti-key"></i>
               </a>
               <?php if ($u['id'] != session()->get('user_id')): ?>
@@ -111,7 +111,7 @@ $role_order = ['admin','hr','drafter','approver','pegawai'];
                  class="btn btn-outline-danger"
                  style="padding:2px 8px;font-size:11px"
                  title="Hapus"
-                 onclick="return confirm('Hapus user <?= esc($u['nama']) ?>?')">
+                 onclick="return confirmAction(event, { title: 'Hapus User', text: 'Hapus user <?= esc($u['nama'], 'js') ?>?', confirmText: 'Ya, Hapus', danger: true })">
                 <i class="ti ti-trash"></i>
               </a>
               <?php endif; ?>

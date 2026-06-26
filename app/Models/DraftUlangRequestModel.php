@@ -52,4 +52,22 @@ class DraftUlangRequestModel extends Model
         }
         return $builder->countAllResults() > 0;
     }
+
+    // Ambil permintaan draft ulang TERAKHIR (apa pun statusnya) untuk pegawai/periode ini,
+    // lalu kembalikan hanya jika statusnya 'ditolak'. Dengan begini, notifikasi penolakan
+    // tidak akan muncul kembali apabila sesudahnya ada permintaan baru yang sudah dikonfirmasi.
+    public function getLatestDeclined(int $pegawaiId, int $periodeId): ?array
+    {
+        $latest = $this->where('pegawai_id', $pegawaiId)
+                       ->where('periode_id', $periodeId)
+                       ->where('tipe', 'pegawai')
+                       ->orderBy('requested_at', 'DESC')
+                       ->first();
+
+        if ($latest && $latest['status'] === 'ditolak') {
+            return $latest;
+        }
+
+        return null;
+    }
 }

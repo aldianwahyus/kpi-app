@@ -327,114 +327,11 @@ class PenilaianController extends BaseController
             $pegawaiId, $periodeId, 'pegawai'
         );
 
-        return $result;
-    }
-
-    public function redraft(int $pegawai_id)
-    {
-        // 1. Validasi: HANYA Administrator yang boleh melakukan ini
-        if (session()->get('role') !== 'admin') {
-            return redirect()->back()->with('error', 'Akses Ditolak! Hanya Administrator yang dapat melakukan Draft Ulang.');
-        }
-
-        // 2. Ambil data pegawai untuk kebutuhan Log Audit
-        $pegawaiModel = new \App\Models\PegawaiModel();
-        $pegawai = $pegawaiModel->find($pegawai_id);
-        if (!$pegawai) {
-            return redirect()->back()->with('error', 'Pegawai tidak ditemukan.');
-        }
-
-        // 3. Ambil periode yang sedang aktif
-        $periodeModel = new \App\Models\PeriodeModel();
-        $periodeAktif = $periodeModel->getActive();
-        if (!$periodeAktif) {
-            return redirect()->back()->with('error', 'Tidak ada periode aktif.');
-        }
-
-        // 4. Proses Draft Ulang: Ubah status kembali menjadi 'Draft'
-        $penilaianModel = new \App\Models\PenilaianModel();
-        $penilaianModel->where('pegawai_id', $pegawai_id)
-                       ->where('periode_id', $periodeAktif['id'])
-                       ->set(['status_approval' => 'Draft'])
-                       ->update();
-
-        // 5. Catat Log Perubahan (Sesuai Syarat No. 2)
-        // Pastikan Anda sudah "use App\Services\AuditService;" di bagian atas Controller
-        $auditService = new \App\Services\AuditService();
-        $auditService->log(
-            session()->get('id'), 
-            "Melakukan DRAFT ULANG pada penilaian pegawai: " . $pegawai['nama'] . " (NIP: " . $pegawai['nip'] . "). Penilaian kini dapat diedit kembali."
+        // Permintaan draft ulang yang ditolak Administrator (untuk notifikasi ke Approver)
+        $result['latest_declined_draft_request'] = $draftUlangModel->getLatestDeclined(
+            $pegawaiId, $periodeId
         );
 
-        return redirect()->back()->with('success', "Penilaian atas nama {$pegawai['nama']} berhasil di-Draft Ulang. User terkait kini dapat mengeditnya kembali.");
-    }
-
-    /**
-     * 1. Fungsi APPROVER meminta konfirmasi Draft Ulang
-     */
-    public function requestRedraft(int $pegawai_id)
-    {
-        if (session()->get('role') !== 'approver') {
-            return redirect()->back()->with('error', 'Hanya Approver yang dapat mengajukan permintaan Draft Ulang.');
-        }
-
-        $this->penilaianModel->where('pegawai_id', $pegawai_id)
-             ->set([
-                 'is_redraft_requested' => 1,
-                 'redraft_requested_by' => session()->get('id')
-             ])->update();
-
-        $auditService = new \App\Services\AuditService();
-        $auditService->log(session()->get('id'), "Approver mengajukan permintaan DRAFT ULANG untuk pegawai ID: $pegawai_id");
-
-        return redirect()->back()->with('success', 'Permintaan Draft Ulang berhasil dikirim ke Administrator.');
-    }
-
-    /**
-     * 2. Fungsi ADMIN eksekusi Draft Ulang (PER PEGAWAI)
-     */
-    public function approveRedraftSingle(int $pegawai_id)
-    {
-        if (session()->get('role') !== 'admin') return redirect()->back();
-
-        $this->penilaianModel->where('pegawai_id', $pegawai_id)
-             ->where('is_redraft_requested', 1)
-             ->set([
-                 'status_approval' => 'Draft',
-                 'is_redraft_requested' => 0
-             ])->update();
-
-        $auditService = new \App\Services\AuditService();
-        $auditService->log(session()->get('id'), "Admin MENYETUJUI eksekusi Draft Ulang untuk pegawai ID: $pegawai_id. Penilaian kembali menjadi Draft.");
-
-        return redirect()->back()->with('success', 'Penilaian berhasil di-Draft Ulang. User terkait dapat mengedit nilainya kembali.');
-    }
-
-    /**
-     * 3. Fungsi ADMIN eksekusi Draft Ulang (MASSAL PER PERIODE)
-     */
-    public function approveRedraftMassal(int $periode_id)
-    {
-        if (session()->get('role') !== 'admin') return redirect()->back();
-        
-        $jumlahRequest = $this->penilaianModel->where('periode_id', $periode_id)
-                              ->where('is_redraft_requested', 1)
-                              ->countAllResults();
-
-        if ($jumlahRequest == 0) {
-            return redirect()->back()->with('error', 'Tidak ada permintaan Draft Ulang yang tertunda di periode ini.');
-        }
-
-        $this->penilaianModel->where('periode_id', $periode_id)
-             ->where('is_redraft_requested', 1)
-             ->set([
-                 'status_approval' => 'Draft',
-                 'is_redraft_requested' => 0
-             ])->update();
-
-        $auditService = new \App\Services\AuditService();
-        $auditService->log(session()->get('id'), "Admin mengeksekusi Draft Ulang MASSAL untuk $jumlahRequest pegawai pada Periode ID: $periode_id");
-
-        return redirect()->back()->with('success', "$jumlahRequest Penilaian berhasil di-Draft Ulang secara massal.");
+        return $result;
     }
 }

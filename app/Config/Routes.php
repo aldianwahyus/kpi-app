@@ -136,12 +136,6 @@ $routes->group('', ['filter' => 'auth'], function($routes) {
     $routes->post('penilaian/submit/(:num)',  'PenilaianController::submit/$1');
     $routes->post('penilaian/approve/(:num)', 'PenilaianController::approve/$1');
     $routes->post('penilaian/reject/(:num)',  'PenilaianController::reject/$1');
-    $routes->get('penilaian/request-redraft/(:num)', 'PenilaianController::requestRedraft/$1');
-    $routes->get('penilaian/approve-redraft/(:num)', 'PenilaianController::approveRedraftSingle/$1');
-    $routes->get('penilaian/approve-redraft-massal/(:num)', 'PenilaianController::approveRedraftMassal/$1');
-
-    // Rute untuk Draft Ulang
-    $routes->get('penilaian/redraft/(:num)', 'PenilaianController::redraft/$1');
 
     // Notifikasi
     $routes->get('notifikasi',              'NotifikasiController::index');
@@ -160,9 +154,4 @@ $routes->group('', ['filter' => 'auth'], function($routes) {
     $routes->post('draft-ulang/request-periode',         'DraftUlangController::requestPeriode');
     $routes->post('draft-ulang/confirm/(:num)',          'DraftUlangController::confirm/$1');
     $routes->post('draft-ulang/decline/(:num)',          'DraftUlangController::decline/$1');
-
-    // Routing untuk mekanisme Draft Ulang
-    $routes->get('draft-ulang/request/(:num)', 'DraftUlangController::request/$1');
-    $routes->get('draft-ulang/approve/(:num)', 'DraftUlangController::approve/$1');
-    $routes->get('draft-ulang/approve-massal/(:num)', 'DraftUlangController::approveMassal/$1');
 });
