@@ -22,7 +22,8 @@ $routes->group('', ['filter' => 'auth'], function($routes) {
     $routes->get('penilaian',               'PenilaianController::index');
     $routes->get('penilaian/form/(:num)',    'PenilaianController::form/$1');
     $routes->post('penilaian/store/(:num)', 'PenilaianController::store/$1');
-    $routes->post('penilaian/ajaxHitung', 'PenilaianController::ajaxHitung');
+    $routes->post('penilaian/ajaxHitung',        'PenilaianController::ajaxHitung');
+    $routes->post('penilaian/ajaxHitungTurunan', 'PenilaianController::ajaxHitungTurunan');
 
     // ── Penilaian KPI Unit ────────────────────────────────
     $routes->get('penilaian-unit',                'PenilaianUnitController::index');

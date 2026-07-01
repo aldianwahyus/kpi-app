@@ -222,7 +222,11 @@ function hitungCapaian(kpiId, target, realisasi) {
     })
     .then(r => r.json())
     .then(data => {
-        if (data.csrf_hash) csrfHashValue = data.csrf_hash;
+        if (data.csrf_hash) {
+            csrfHashValue = data.csrf_hash;
+            document.querySelectorAll('input[type="hidden"][name="' + csrfTokenName + '"]')
+                    .forEach(function(el) { el.value = data.csrf_hash; });
+        }
 
         const el = document.getElementById('capaian_' + kpiId);
         if (!el) return;

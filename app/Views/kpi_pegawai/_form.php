@@ -163,6 +163,16 @@
                 </div>
 
                 <!-- Tambah Parameter Turunan -->
+                <?php if ((float)$kpi['bobot'] <= 0): ?>
+                <button type="button"
+                        class="btn btn-outline-secondary btn-sm"
+                        style="padding:3px 10px;font-size:11px;white-space:nowrap;opacity:0.6"
+                        disabled
+                        title="Isi dan simpan Bobot KPI Induk terlebih dahulu sebelum menambah Parameter Turunan">
+                  <i class="ti ti-list-tree" style="font-size:13px"></i> Tambah Parameter
+                  <i class="ti ti-alert-circle text-warning ms-1" style="font-size:11px"></i>
+                </button>
+                <?php else: ?>
                 <button type="button"
                         class="btn btn-outline-primary btn-sm"
                         style="padding:3px 10px;font-size:11px;white-space:nowrap"
@@ -170,6 +180,7 @@
                         data-bs-target="#modalTambahTurunan<?= $kpi['id'] ?>">
                   <i class="ti ti-list-tree" style="font-size:13px"></i> Tambah Parameter
                 </button>
+                <?php endif; ?>
 
                 <!-- Hapus -->
                 <a href="<?= base_url("kpi-pegawai/delete/{$kpi['id']}") ?>"
@@ -178,6 +189,24 @@
                    onclick="return confirmAction(event, { title: 'Hapus KPI', text: 'Hapus KPI ini beserta seluruh Parameter Turunannya?', confirmText: 'Ya, Hapus', danger: true })">
                   <i class="ti ti-trash" style="font-size:13px"></i>
                 </a>
+              </div>
+
+              <!-- Deskripsi Target — panduan pengisian Realisasi untuk Drafter/Approver.
+                   Input ini menggunakan array index yang sama dengan kp_id[], bobot[],
+                   dan target[] sehingga saveBobot() bisa memetakannya per-KPI dengan benar. -->
+              <div class="pb-2 mt-1">
+                <div class="input-group input-group-sm">
+                  <span class="input-group-text bg-light text-muted"
+                        style="font-size:10px;white-space:nowrap;padding:2px 6px">
+                    <i class="ti ti-info-circle me-1"></i>Deskripsi Target
+                  </span>
+                  <input type="text"
+                         name="deskripsi_target[]"
+                         class="form-control"
+                         value="<?= esc($kpi['deskripsi_target'] ?? '') ?>"
+                         placeholder="Contoh: Turnover ≤ 10 orang, atau Minimal 2x pelatihan setahun"
+                         style="font-size:12px">
+                </div>
               </div>
             </div>
 
@@ -283,13 +312,10 @@
                 <?= csrf_field() ?>
                 <div class="modal-body">
                   <div class="alert py-2 mb-3" style="font-size:12px;background:#E6F1FB;border:1px solid #2E75B6;color:#1F4E79">
-                    Target Parameter Induk saat ini: <strong><?= number_format((float)$kpi['target'], 2) ?></strong>.
-                    Sisa target yang dapat dibagikan ke Parameter Turunan:
-                    <strong id="sisaTargetInfo<?= $kpi['id'] ?>"><?= number_format(max(0, round((float)$kpi['target'] - array_sum(array_column($turunanListModal,'target')), 2)), 2) ?></strong>.
-                    <br>
-                    Bobot Parameter Induk saat ini: <strong><?= round((float)$kpi['bobot']*100, 2) ?>%</strong>.
-                    Sisa bobot yang dapat dibagikan ke Parameter Turunan:
+                    Bobot Parameter Induk: <strong><?= round((float)$kpi['bobot']*100, 2) ?>%</strong>.
+                    Sisa bobot tersedia:
                     <strong id="sisaBobotInfo<?= $kpi['id'] ?>"><?= round($sisaBobotTurunanModal * 100, 2) ?>%</strong>.
+                    <br><span style="font-size:11px">Target setiap Turunan bersifat independen — bebas diisi sesuai satuan masing-masing.</span>
                   </div>
                   <div class="mb-2">
                     <label class="form-label fw-semibold small">
@@ -298,19 +324,50 @@
                     <input type="text" name="nama_turunan" class="form-control form-control-sm"
                            placeholder="Misal: Penjualan Cabang A" required>
                   </div>
-                  <div class="row g-2">
+                  <div class="mb-2">
+                    <label class="form-label fw-semibold small">Deskripsi Target</label>
+                    <input type="text" name="deskripsi_target" class="form-control form-control-sm"
+                           placeholder="Contoh: Penjualan Cabang A minimal 500 nasabah">
+                    <div class="form-text" style="font-size:10px">Panduan pengisian Realisasi untuk Drafter</div>
+                  </div>
+                  <div class="row g-2 mb-2">
                     <div class="col-6">
                       <label class="form-label fw-semibold small">
                         Target <span class="text-danger">*</span>
                       </label>
-                      <?php $sisaTargetModal = max(0, round((float)$kpi['target'] - array_sum(array_column($turunanListModal,'target')), 2)); ?>
-                      <input type="number" name="target" class="form-control form-control-sm target-turunan-input"
-                             data-sisa-pagu="<?= $sisaTargetModal ?>"
-                             step="any" min="0" max="<?= $sisaTargetModal ?>" placeholder="100" required>
-                      <div class="form-text peringatan-pagu" style="font-size:10px">
-                        Maksimal <?= number_format($sisaTargetModal, 2) ?>
-                      </div>
+                      <input type="number" name="target" class="form-control form-control-sm"
+                             step="any" min="0" placeholder="100" required>
+                      <div class="form-text" style="font-size:10px">Bebas — sesuai satuan Turunan ini</div>
                     </div>
+                    <div class="col-6">
+                      <label class="form-label fw-semibold small">
+                        Satuan
+                      </label>
+                      <input type="text" name="satuan" class="form-control form-control-sm"
+                             placeholder="%, Rp Juta, Skor, Jumlah ...">
+                    </div>
+                  </div>
+                  <div class="row g-2 mb-2">
+                    <div class="col-6">
+                      <label class="form-label fw-semibold small">
+                        Polarity <span class="text-danger">*</span>
+                      </label>
+                      <select name="polarity" class="form-select form-select-sm">
+                        <option value="max">↑ Max (lebih besar lebih baik)</option>
+                        <option value="min">↓ Min (lebih kecil lebih baik)</option>
+                      </select>
+                    </div>
+                    <div class="col-6">
+                      <label class="form-label fw-semibold small">
+                        Perubahan Polarity <span class="text-danger">*</span>
+                      </label>
+                      <select name="perubahan_polarity" class="form-select form-select-sm">
+                        <option value="pos">Positif</option>
+                        <option value="neg">Negatif</option>
+                      </select>
+                    </div>
+                  </div>
+                  <div class="row g-2">
                     <div class="col-6">
                       <label class="form-label fw-semibold small">
                         Bobot (desimal) <span class="text-danger">*</span>
@@ -341,8 +398,6 @@
         <?php
           $totalBobotLainModal  = $totalBobotTurunanModal - (float)$t['bobot'];
           $sisaBobotEditModal   = max(0, round((float)$kpi['bobot'] - $totalBobotLainModal, 4));
-          $totalTargetLainModal = array_sum(array_column($turunanListModal,'target')) - (float)$t['target'];
-          $sisaTargetEditModal  = max(0, round((float)$kpi['target'] - $totalTargetLainModal, 2));
         ?>
         <div class="modal fade" id="modalEditTurunan<?= $t['id'] ?>" tabindex="-1">
           <div class="modal-dialog">
@@ -358,9 +413,8 @@
                 <?= csrf_field() ?>
                 <div class="modal-body">
                   <div class="alert py-2 mb-3" style="font-size:12px;background:#E6F1FB;border:1px solid #2E75B6;color:#1F4E79">
-                    Target maksimal untuk Parameter Turunan ini: <strong><?= number_format($sisaTargetEditModal, 2) ?></strong>.
-                    <br>
-                    Bobot maksimal untuk Parameter Turunan ini: <strong><?= round($sisaBobotEditModal * 100, 2) ?>%</strong>.
+                    Bobot maksimal: <strong><?= round($sisaBobotEditModal * 100, 2) ?>%</strong>.
+                    <br><span style="font-size:11px">Target bersifat independen — bebas diisi sesuai satuan Turunan ini.</span>
                   </div>
                   <div class="mb-2">
                     <label class="form-label fw-semibold small">
@@ -369,19 +423,51 @@
                     <input type="text" name="nama_turunan" class="form-control form-control-sm"
                            value="<?= esc($t['nama_turunan']) ?>" required>
                   </div>
-                  <div class="row g-2">
+                  <div class="mb-2">
+                    <label class="form-label fw-semibold small">Deskripsi Target</label>
+                    <input type="text" name="deskripsi_target" class="form-control form-control-sm"
+                           value="<?= esc($t['deskripsi_target'] ?? '') ?>"
+                           placeholder="Contoh: Penjualan Cabang A minimal 500 nasabah">
+                    <div class="form-text" style="font-size:10px">Panduan pengisian Realisasi untuk Drafter</div>
+                  </div>
+                  <div class="row g-2 mb-2">
                     <div class="col-6">
                       <label class="form-label fw-semibold small">
                         Target <span class="text-danger">*</span>
                       </label>
-                      <input type="number" name="target" class="form-control form-control-sm target-turunan-input"
-                             data-sisa-pagu="<?= $sisaTargetEditModal ?>"
+                      <input type="number" name="target" class="form-control form-control-sm"
                              value="<?= esc($t['target']) ?>"
-                             step="any" min="0" max="<?= $sisaTargetEditModal ?>" required>
-                      <div class="form-text peringatan-pagu" style="font-size:10px">
-                        Maksimal <?= number_format($sisaTargetEditModal, 2) ?>
-                      </div>
+                             step="any" min="0" required>
+                      <div class="form-text" style="font-size:10px">Bebas — sesuai satuan Turunan ini</div>
                     </div>
+                    <div class="col-6">
+                      <label class="form-label fw-semibold small">Satuan</label>
+                      <input type="text" name="satuan" class="form-control form-control-sm"
+                             value="<?= esc($t['satuan'] ?? '') ?>"
+                             placeholder="%, Rp Juta, Skor ...">
+                    </div>
+                  </div>
+                  <div class="row g-2 mb-2">
+                    <div class="col-6">
+                      <label class="form-label fw-semibold small">
+                        Polarity <span class="text-danger">*</span>
+                      </label>
+                      <select name="polarity" class="form-select form-select-sm">
+                        <option value="max" <?= ($t['polarity'] ?? 'max') === 'max' ? 'selected' : '' ?>>↑ Max (lebih besar lebih baik)</option>
+                        <option value="min" <?= ($t['polarity'] ?? 'max') === 'min' ? 'selected' : '' ?>>↓ Min (lebih kecil lebih baik)</option>
+                      </select>
+                    </div>
+                    <div class="col-6">
+                      <label class="form-label fw-semibold small">
+                        Perubahan Polarity <span class="text-danger">*</span>
+                      </label>
+                      <select name="perubahan_polarity" class="form-select form-select-sm">
+                        <option value="pos" <?= ($t['perubahan_polarity'] ?? 'pos') === 'pos' ? 'selected' : '' ?>>Positif</option>
+                        <option value="neg" <?= ($t['perubahan_polarity'] ?? 'pos') === 'neg' ? 'selected' : '' ?>>Negatif</option>
+                      </select>
+                    </div>
+                  </div>
+                  <div class="row g-2">
                     <div class="col-6">
                       <label class="form-label fw-semibold small">
                         Bobot (desimal) <span class="text-danger">*</span>

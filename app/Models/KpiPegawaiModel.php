@@ -11,7 +11,7 @@ class KpiPegawaiModel extends Model
     // ── PERBAIKAN 1: Tambahkan 'target' ke allowedFields agar bisa di-save/update ──
     protected $allowedFields = [
         'pegawai_id', 'kpi_id', 'divisi_id',
-        'bobot', 'target', 'urutan', 'is_active',
+        'bobot', 'target', 'deskripsi_target', 'urutan', 'is_active',
     ];
     protected $useTimestamps = true;
 
@@ -21,9 +21,13 @@ class KpiPegawaiModel extends Model
         return $this->db->table('kpi_pegawai kp')
             // UBAH SELECT DI BAWAH INI:
             // Kita tidak menggunakan kp.* untuk menghindari pengambilan kolom yang tidak ada
-            ->select('kp.id, kp.pegawai_id, kp.kpi_id, kp.divisi_id, kp.bobot, kp.urutan, kp.is_active, 
-                    k.nama_kpi, k.kode, k.satuan, 
-                    IFNULL(kp.target, k.target) as target, 
+            ->select('kp.id, kp.pegawai_id, kp.kpi_id, kp.divisi_id,
+                    kp.bobot          as bobot,
+                    kp.urutan         as urutan,
+                    kp.is_active      as is_active,
+                    k.nama_kpi, k.kode, k.satuan,
+                    IFNULL(kp.target, k.target) as target,
+                    kp.deskripsi_target,
                     k.polarity, k.is_capped, k.perubahan_polarity, k.perspektif')
             ->join('kpi_unit k', 'k.id = kp.kpi_id')
             ->where('kp.pegawai_id', $pegawaiId)

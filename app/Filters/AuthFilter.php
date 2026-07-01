@@ -45,9 +45,13 @@ class AuthFilter implements FilterInterface
         // akun yang dibuat lewat import massal Excel. Pengguna tidak dapat
         // mengakses halaman lain sampai password diubah sendiri lewat Profil.
         if (session()->get('must_change_password') == 1) {
-            $currentPath = ltrim(parse_url(current_url(), PHP_URL_PATH), '/');
-            $basePath    = ltrim(base_url(), '/');
-            $relPath     = ltrim(str_replace($basePath, '', $currentPath), '/');
+            // uri_string() mengembalikan path relatif dari root aplikasi
+            // (misal 'profil', 'dashboard', 'penilaian/form/1') — lebih
+            // andal dari parse_url() + str_replace() yang sebelumnya
+            // gagal karena base_url() menyertakan skema (http://) sedangkan
+            // PHP_URL_PATH hanya mengembalikan path, sehingga str_replace
+            // tidak pernah menemukan kecocokan dan loop redirect terjadi.
+            $relPath = ltrim(uri_string(), '/');
 
             $allowed = ['profil', 'profil/update', 'auth/logout'];
             if (!in_array($relPath, $allowed)) {

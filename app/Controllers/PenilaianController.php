@@ -208,45 +208,70 @@ class PenilaianController extends BaseController
             $punyaTurunan = !empty($listTurunan);
 
             if ($punyaTurunan) {
-                // ── KPI dengan Parameter Turunan: Realisasi Induk = SUM
-                //    seluruh Realisasi Turunan, sesuai mekanisme yang
-                //    ditetapkan. Setiap Turunan dengan realisasi kosong/0
-                //    dianggap "belum diisi" dan tidak ikut dijumlahkan,
-                //    konsisten dengan aturan yang sama pada KPI tanpa Turunan.
-                $turunanInput = $realisasiTurunan[$kpiPegawaiId] ?? [];
-                $adaTurunanTerisi = false;
-                $sumRealisasi = 0.0;
+                // ── KPI dengan Parameter Turunan: Alternatif 1 ──────────
+                // Skor dihitung per Turunan berdasarkan Target & Polarity
+                // masing-masing (yang bisa berbeda antar Turunan), lalu
+                // Skor Induk = rata-rata tertimbang menggunakan Cara B:
+                //   Skor_Induk = Σ(Skor_T × Bobot_T) / Bobot_Induk
+                $turunanInput   = $realisasiTurunan[$kpiPegawaiId] ?? [];
+                $sumKontribusiT = 0.0;
+                $skorPerTurunan = [];
 
+                // Validasi ALL-OR-NOTHING: semua Turunan harus diisi.
+                // Jika ada yang kosong/0, KPI Induk ini dilewati seluruhnya —
+                // skor parsial tidak boleh disimpan karena akan menghasilkan
+                // nilai yang menyesatkan (Turunan yang tidak diisi dihitung
+                // sebagai kontribusi 0, sehingga skor Induk menjadi terlalu
+                // rendah padahal Turunan itu sebenarnya belum dinilai).
+                $turunanTidakLengkap = false;
                 foreach ($listTurunan as $t) {
                     $rt = $turunanInput[$t['id']] ?? null;
-                    if ($rt === null || $rt === '' || (float)$rt == 0.0) continue;
-                    $sumRealisasi += (float)$rt;
-                    $adaTurunanTerisi = true;
+                    if ($rt === null || $rt === '' || (float)$rt == 0.0) {
+                        $turunanTidakLengkap = true;
+                        break;
+                    }
                 }
 
-                // Jika belum ada satu pun Turunan yang diisi, lewati KPI ini
-                // sepenuhnya — sama seperti KPI biasa yang realisasinya kosong.
-                if (!$adaTurunanTerisi) continue;
+                if ($turunanTidakLengkap) continue;
 
-                $real = $sumRealisasi;
+                foreach ($listTurunan as $t) {
+                    $rtFloat      = (float)($turunanInput[$t['id']]);
+                    $targetT      = (float)($t['target'] ?? 100);
+                    $polarityT    = $t['polarity'] ?? 'max';
+                    $bobotT       = (float)($t['bobot'] ?? 0);
+
+                    // is_capped selalu true sesuai keputusan desain
+                    $skorT        = $this->calculator->hitungSkorCapaian($rtFloat, $targetT, $polarityT, true);
+                    $kontribusiT  = $bobotT > 0 ? $skorT * $bobotT : 0;
+
+                    $sumKontribusiT += $kontribusiT;
+                    $skorPerTurunan[$t['id']] = [
+                        'realisasi'        => $rtFloat,
+                        'skor'             => round($skorT, 2),
+                        'nilai_kontribusi' => round($kontribusiT, 4),
+                    ];
+                }
+
+                // Skor Induk = Σ(Skor_T × Bobot_T) / Bobot_Induk (Cara B)
+                $bobotInduk = (float)$kpi['bobot'];
+                $skorInduk  = $bobotInduk > 0 ? $sumKontribusiT / $bobotInduk : 0;
+                $skorInduk  = max(10, min(100, $skorInduk));
+
+                $real       = null; // tidak relevan untuk kasus Turunan
+                $skor       = $skorInduk;
+                $kontribusi = $this->calculator->hitungKontribusi($skor, $bobotInduk);
+
             } else {
                 // ── KPI tanpa Parameter Turunan: alur asli, tidak diubah ──
                 $real = $realisasi[$kpiId] ?? null;
-
-                // Realisasi kosong ATAU bernilai 0 dianggap "belum diisi" dan
-                // tidak disimpan sebagai penilaian — berlaku untuk seluruh
-                // polarity (max maupun min), sesuai ketentuan yang ditetapkan.
                 if ($real === null || $real === '' || (float)$real == 0.0) continue;
-
-                $real = (float)$real;
+                $real       = (float)$real;
+                $target     = (float)($kpi['target'] ?? 100);
+                $polarity   = $kpi['polarity'] ?? 'max';
+                $isCapped   = (bool)($kpi['is_capped'] ?? true);
+                $skor       = $this->calculator->hitungSkorCapaian($real, $target, $polarity, $isCapped);
+                $kontribusi = $this->calculator->hitungKontribusi($skor, (float)$kpi['bobot']);
             }
-
-            $target   = (float)($kpi['target'] ?? 100);
-            $polarity = $kpi['polarity'] ?? 'max';
-            $isCapped = (bool)($kpi['is_capped'] ?? true);
-
-            $skor       = $this->calculator->hitungSkorCapaian($real, $target, $polarity, $isCapped);
-            $kontribusi = $this->calculator->hitungKontribusi($skor, (float)$kpi['bobot']);
 
             // 1. Ambil data lama untuk pembanding di Histori Log
             $oldData = $this->penilaianModel
@@ -256,10 +281,10 @@ class PenilaianController extends BaseController
                 ->first();
 
             $newData = [
-                'realisasi'        => $real,
+                'realisasi'        => $punyaTurunan ? null : $real,
                 'skor'             => round($skor, 2),
                 'nilai_kontribusi' => round($kontribusi, 2),
-                'catatan'          => $catatan[$kpiId] ?? null,
+                'catatan'          => $punyaTurunan ? null : ($catatan[$kpiId] ?? null),
                 'input_by'         => session()->get('user_id'),
                 'status'           => 'draft',
             ];
@@ -267,10 +292,8 @@ class PenilaianController extends BaseController
             // 2. Simpan Data ke Database
             $this->penilaianModel->upsert($pegawaiId, $kpiId, $periodeAktif['id'], $newData);
 
-            // 3. Catat Perubahan ke Tabel Histori (Audit Log)
-            $action = $oldData ? 'update' : 'create';
-            
-            // Dapatkan ID record yang baru saja disimpan
+            // 3. Dapatkan ID record
+            $action   = $oldData ? 'update' : 'create';
             $recordId = $oldData['id'] ?? null;
             if (!$recordId) {
                 $savedRecord = $this->penilaianModel
@@ -278,40 +301,33 @@ class PenilaianController extends BaseController
                 $recordId = $savedRecord['id'] ?? null;
             }
 
-            // 4. Simpan rincian Realisasi per Parameter Turunan, ditautkan
-            //    ke baris penilaian Induk yang baru diketahui id-nya.
-            //    Tidak mengubah cara kerja KPI tanpa Turunan sama sekali.
+            // 4. Simpan skor & kontribusi per Turunan
             if ($punyaTurunan && $recordId) {
-                $turunanInput = $realisasiTurunan[$kpiPegawaiId] ?? [];
                 foreach ($listTurunan as $t) {
-                    $rt = $turunanInput[$t['id']] ?? null;
-                    // Konsisten dengan aturan SUM di atas: realisasi kosong
-                    // ATAU bernilai 0 dianggap "belum diisi" dan tidak
-                    // disimpan — mencegah baris Turunan tersimpan dengan
-                    // realisasi=0 padahal SUM Induk mengabaikannya sebagai
-                    // belum terisi (data yang tersimpan tetap konsisten
-                    // dengan data yang sebenarnya dipakai untuk kalkulasi).
+                    $rt = ($realisasiTurunan[$kpiPegawaiId] ?? [])[$t['id']] ?? null;
                     if ($rt === null || $rt === '' || (float)$rt == 0.0) continue;
 
+                    $skorData = $skorPerTurunan[$t['id']] ?? null;
+                    if (!$skorData) continue;
+
                     $this->penilaianTurunanModel->upsert($recordId, (int)$t['id'], [
-                        'realisasi' => (float)$rt,
-                        'catatan'   => $catatanTurunan[$kpiPegawaiId][$t['id']] ?? null,
+                        'realisasi'        => $skorData['realisasi'],
+                        'skor'             => $skorData['skor'],
+                        'nilai_kontribusi' => $skorData['nilai_kontribusi'],
+                        'catatan'          => ($catatanTurunan[$kpiPegawaiId] ?? [])[$t['id']] ?? null,
                     ]);
                 }
             }
 
             if ($recordId) {
-                $keterangan = $oldData ? "Update Realisasi menjadi $real" : "Input Realisasi awal $real";
-                if ($punyaTurunan) {
-                    $keterangan .= " (hasil SUM dari " . count($listTurunan) . " Parameter Turunan)";
-                }
-                
+                $keterangan = $punyaTurunan
+                    ? 'Input Realisasi per Turunan, Skor Induk = rata-rata tertimbang (' . round($skor, 2) . ')'
+                    : ($oldData ? "Update Realisasi menjadi $real" : "Input Realisasi awal $real");
+
                 $this->auditService->log(
-                    'penilaian',
-                    $recordId,
-                    $action,
+                    'penilaian', $recordId, $action,
                     $oldData ? ['realisasi' => $oldData['realisasi'], 'skor' => $oldData['skor']] : null,
-                    ['realisasi' => $newData['realisasi'], 'skor' => $newData['skor']],
+                    ['skor' => $newData['skor'], 'nilai_kontribusi' => $newData['nilai_kontribusi']],
                     $keterangan
                 );
             }
@@ -508,5 +524,55 @@ class PenilaianController extends BaseController
         );
 
         return $result;
+    }
+
+    // ── AJAX: Hitung skor satu Parameter Turunan secara real-time ──
+    // Dipanggil JS saat Drafter mengetik Realisasi di baris Turunan.
+    // Berbeda dari ajaxHitung() yang menerima kpi_id — endpoint ini
+    // menerima turunan_id karena setiap Turunan punya polarity &
+    // target sendiri yang independen dari KPI Induk.
+    public function ajaxHitungTurunan()
+    {
+        $turunanId = (int)$this->request->getPost('turunan_id');
+        $pegawaiId = (int)$this->request->getPost('pegawai_id');
+        $realisasi = $this->request->getPost('realisasi');
+
+        if (!$this->canAccessPegawai($pegawaiId)) {
+            return $this->response->setJSON(['valid' => false, 'csrf_hash' => csrf_hash()]);
+        }
+
+        $turunan = $this->kpiPegawaiTurunanModel->find($turunanId);
+        if (!$turunan) {
+            return $this->response->setJSON(['valid' => false, 'csrf_hash' => csrf_hash()]);
+        }
+
+        // Verifikasi Turunan ini memang milik pegawai yang bersangkutan
+        $induk = $this->kpiPegawaiModel->find($turunan['kpi_pegawai_id']);
+        if (!$induk || (int)$induk['pegawai_id'] !== $pegawaiId) {
+            return $this->response->setJSON(['valid' => false, 'csrf_hash' => csrf_hash()]);
+        }
+
+        $realisasi = (float)$realisasi;
+        if ($realisasi == 0) {
+            return $this->response->setJSON(['valid' => false, 'csrf_hash' => csrf_hash()]);
+        }
+
+        $target   = (float)($turunan['target']  ?? 100);
+        $polarity = $turunan['polarity']          ?? 'max';
+        $bobot    = (float)($turunan['bobot']    ?? 0);
+
+        // is_capped selalu true sesuai keputusan desain
+        $skor        = $this->calculator->hitungSkorCapaian($realisasi, $target, $polarity, true);
+        $kontribusiT = $bobot > 0 ? $skor * $bobot : 0;
+        $color       = $this->calculator->getColorBySkor($skor);
+
+        return $this->response->setJSON([
+            'valid'        => true,
+            'skor'         => round($skor, 2),
+            'kontribusi_t' => round($kontribusiT, 4),
+            'bobot'        => $bobot,
+            'color'        => $color,
+            'csrf_hash'    => csrf_hash(),
+        ]);
     }
 }

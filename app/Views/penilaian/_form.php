@@ -273,6 +273,14 @@ $isAdmin = (session()->get('role') === 'admin'); // Shortcut flag penentu Admin
                   </span>
                 <?php endif; ?>
               </small>
+              <?php if (!empty($kpi['deskripsi_target'])): ?>
+              <div class="mt-1 d-flex align-items-start gap-1"
+                   style="font-size:11px;background:#EFF6FF;border-left:3px solid #2E75B6;
+                          padding:3px 7px;border-radius:0 4px 4px 0">
+                <i class="ti ti-info-circle mt-1 flex-shrink-0" style="color:#2E75B6;font-size:12px"></i>
+                <span style="color:#1F4E79"><?= esc($kpi['deskripsi_target']) ?></span>
+              </div>
+              <?php endif; ?>
             </td>
             <td class="text-center fw-semibold" style="color:#1F4E79">
               <?= round($bobot * 100, 1) ?>%
@@ -351,7 +359,21 @@ $isAdmin = (session()->get('role') === 'admin'); // Shortcut flag penentu Admin
               <span style="font-size:12px"><?= esc($t['nama_turunan']) ?></span>
               <small class="text-muted d-block" style="font-size:10px;margin-left:18px">
                 Bobot: <?= round((float)$t['bobot']*100, 2) ?>%
+                <?php if (!empty($t['satuan'])): ?>
+                  &nbsp;·&nbsp; Satuan: <strong><?= esc($t['satuan']) ?></strong>
+                <?php endif; ?>
+                &nbsp;·&nbsp; <span style="color:<?= ($t['polarity']??'max')==='max' ? '#375623' : '#C00000' ?>">
+                  <?= ($t['polarity']??'max')==='max' ? '↑ Max' : '↓ Min' ?>
+                </span>
               </small>
+              <?php if (!empty($t['deskripsi_target'])): ?>
+              <div class="mt-1 d-flex align-items-start gap-1"
+                   style="font-size:10px;background:#EFF6FF;border-left:2px solid #2E75B6;
+                          padding:2px 6px;border-radius:0 3px 3px 0;margin-left:18px">
+                <i class="ti ti-info-circle flex-shrink-0" style="color:#2E75B6;font-size:10px;margin-top:1px"></i>
+                <span style="color:#1F4E79"><?= esc($t['deskripsi_target']) ?></span>
+              </div>
+              <?php endif; ?>
             </td>
             <td class="text-center text-muted" style="font-size:12px">
               <?= number_format((float)$t['target'], 2) ?>
@@ -360,11 +382,22 @@ $isAdmin = (session()->get('role') === 'admin'); // Shortcut flag penentu Admin
               <input type="number"
                      name="realisasi_turunan[<?= $kpi['id'] ?>][<?= $t['id'] ?>]"
                      class="form-control form-control-sm realisasi-turunan-input"
+                     data-turunan-id="<?= $t['id'] ?>"
                      data-induk-kpi="<?= $kpi['kpi_id'] ?>"
-                     value="<?= $exT ? $exT['realisasi'] : '' ?>"
+                     data-induk-kp-id="<?= $kpi['id'] ?>"
+                     data-bobot-turunan="<?= (float)$t['bobot'] ?>"
+                     data-bobot-induk="<?= (float)$kpi['bobot'] ?>"
+                     value="<?= $exT ? number_format((float)$exT['realisasi'], 2, '.', '') : '' ?>"
                      <?= $isRealisasiReadonly ? 'readonly style="background:#f0f0f0;cursor:not-allowed"' : '' ?>>
             </td>
-            <td colspan="2"></td>
+            <td class="text-center" colspan="2">
+              <!-- Skor real-time per Turunan — diisi oleh JS via ajaxHitungTurunan -->
+              <span class="skor-turunan-badge badge bg-secondary"
+                    id="skorT_<?= $t['id'] ?>"
+                    style="font-size:11px;display:<?= ($exT && $exT['skor']) ? 'inline' : 'none' ?>">
+                <?= $exT ? number_format((float)($exT['skor'] ?? 0), 2) : '' ?>
+              </span>
+            </td>
             <td>
               <input type="text"
                      name="catatan_turunan[<?= $kpi['id'] ?>][<?= $t['id'] ?>]"
@@ -460,6 +493,16 @@ $isAdmin = (session()->get('role') === 'admin'); // Shortcut flag penentu Admin
 let csrfTokenName  = '<?= csrf_token() ?>';
 let csrfHashValue  = '<?= csrf_hash() ?>';
 
+// Sinkronkan hidden input CSRF di form utama setiap kali token
+// di-regenerate oleh respons AJAX — tanpa ini, submit form akan
+// mengirim token lama yang sudah tidak valid (SecurityException #403).
+function updateCsrfHiddenInput(newHash) {
+    const hiddenInputs = document.querySelectorAll(
+        'input[type="hidden"][name="' + csrfTokenName + '"]'
+    );
+    hiddenInputs.forEach(function(el) { el.value = newHash; });
+}
+
 document.addEventListener('DOMContentLoaded', function() {
     const rows = document.querySelectorAll('.kpi-row');
 
@@ -490,7 +533,10 @@ document.addEventListener('DOMContentLoaded', function() {
             })
             .then(response => response.json())
             .then(data => {
-                if (data.csrf_hash) csrfHashValue = data.csrf_hash;
+                if (data.csrf_hash) {
+                    csrfHashValue = data.csrf_hash;
+                    updateCsrfHiddenInput(data.csrf_hash);
+                }
 
                 if (data.valid) {
                     // Paksa format 2 digit di belakang titik menggunakan toFixed(2)
@@ -502,65 +548,93 @@ document.addEventListener('DOMContentLoaded', function() {
     });
 
     // ── Penanganan input Realisasi pada Parameter Turunan ──────────
-    // Setiap kali salah satu input Turunan berubah, hitung ulang SUM
-    // seluruh Turunan milik Induk yang sama, tampilkan SUM tersebut
-    // pada kolom Realisasi Induk (readonly), lalu panggil ulang
-    // ajaxHitung() menggunakan SUM tersebut sebagai nilai realisasi —
-    // memakai endpoint dan logika kalkulasi Skor yang sama persis
-    // dengan KPI tanpa Parameter Turunan, tanpa duplikasi logika.
+    // Setiap perubahan Realisasi Turunan: panggil ajaxHitungTurunan
+    // untuk mendapat skor individual Turunan tersebut, tampilkan di
+    // badge inline, lalu hitung ulang Skor Induk sebagai rata-rata
+    // tertimbang (Cara B: ΣKontribusiT / BobotInduk).
     document.querySelectorAll('.realisasi-turunan-input').forEach(function (input) {
         input.addEventListener('input', function () {
+            const turunanId  = this.getAttribute('data-turunan-id');
             const indukKpiId = this.getAttribute('data-induk-kpi');
-            hitungUlangRealisasiInduk(indukKpiId);
+            const realisasi  = parseFloat(this.value);
+
+            const badge = document.getElementById('skorT_' + turunanId);
+
+            if (isNaN(realisasi) || realisasi === 0) {
+                if (badge) { badge.style.display = 'none'; badge.textContent = ''; }
+                hitungUlangInduk(indukKpiId);
+                return;
+            }
+
+            let params = new URLSearchParams();
+            params.append(csrfTokenName, csrfHashValue);
+            params.append('turunan_id', turunanId);
+            params.append('pegawai_id', pegawaiId);
+            params.append('realisasi', realisasi);
+
+            fetch("<?= site_url('penilaian/ajaxHitungTurunan') ?>", {
+                method: 'POST',
+                headers: { 'X-Requested-With': 'XMLHttpRequest' },
+                body: params
+            })
+            .then(r => r.json())
+            .then(data => {
+                if (data.csrf_hash) {
+                    csrfHashValue = data.csrf_hash;
+                    updateCsrfHiddenInput(data.csrf_hash);
+                }
+                if (data.valid && badge) {
+                    badge.textContent  = 'Skor: ' + parseFloat(data.skor).toFixed(2);
+                    badge.className    = 'skor-turunan-badge badge text-bg-' + data.color;
+                    badge.style.display = 'inline';
+                    badge.setAttribute('data-skor-t',      data.skor);
+                    badge.setAttribute('data-kontribusi-t', data.kontribusi_t);
+                }
+                hitungUlangInduk(indukKpiId);
+            })
+            .catch(() => hitungUlangInduk(indukKpiId));
         });
     });
 
-    function hitungUlangRealisasiInduk(indukKpiId) {
+    // Hitung ulang Skor & Kontribusi Induk dari semua badge Turunan
+    // yang sudah terisi — Cara B: ΣKontribusiT / BobotInduk
+    function hitungUlangInduk(indukKpiId) {
         const indukRow = document.querySelector('.kpi-row[data-kpi="' + indukKpiId + '"]');
         if (!indukRow) return;
 
-        let sum = 0;
-        let adaTerisi = false;
-        document.querySelectorAll('.realisasi-turunan-input[data-induk-kpi="' + indukKpiId + '"]')
-            .forEach(function (el) {
-                const val = parseFloat(el.value);
-                if (!isNaN(val) && val !== 0) {
-                    sum += val;
-                    adaTerisi = true;
-                }
-            });
-
-        const realisasiIndukField = document.getElementById('realisasi_induk_' + indukKpiId);
-        if (realisasiIndukField) {
-            realisasiIndukField.value = adaTerisi ? sum : '';
-        }
-
-        if (!adaTerisi) return;
-
         const outputSkor    = indukRow.querySelector('.skor-output');
         const outputKontrib = indukRow.querySelector('.kontribusi-output');
-        const pegawaiId     = "<?= $pegawai['id'] ?>";
+        const bobotInduk    = parseFloat(
+            document.querySelector('.realisasi-turunan-input[data-induk-kpi="' + indukKpiId + '"]')
+                ?.getAttribute('data-bobot-induk') || 0
+        );
 
-        let params = new URLSearchParams();
-        params.append(csrfTokenName, csrfHashValue);
-        params.append('kpi_id', indukKpiId);
-        params.append('pegawai_id', pegawaiId);
-        params.append('realisasi', sum);
-
-        fetch("<?= site_url('penilaian/ajaxHitung') ?>", {
-            method: "POST",
-            headers: { 'X-Requested-With': 'XMLHttpRequest' },
-            body: params
-        })
-        .then(function (response) { return response.json(); })
-        .then(function (data) {
-            if (data.csrf_hash) csrfHashValue = data.csrf_hash;
-
-            if (data.valid) {
-                outputSkor.value    = parseFloat(data.skor).toFixed(2);
-                outputKontrib.value = parseFloat(data.kontribusi).toFixed(2);
+        // Kumpulkan semua kontribusi Turunan yang sudah dihitung
+        let sumKontribusiT = 0;
+        let adaData = false;
+        document.querySelectorAll(
+            '.realisasi-turunan-input[data-induk-kpi="' + indukKpiId + '"]'
+        ).forEach(function (inp) {
+            const tid   = inp.getAttribute('data-turunan-id');
+            const badge = document.getElementById('skorT_' + tid);
+            if (badge && badge.getAttribute('data-kontribusi-t')) {
+                sumKontribusiT += parseFloat(badge.getAttribute('data-kontribusi-t') || 0);
+                adaData = true;
             }
         });
+
+        if (!adaData || bobotInduk === 0) {
+            if (outputSkor)    outputSkor.value    = '';
+            if (outputKontrib) outputKontrib.value = '';
+            return;
+        }
+
+        // Cara B: Skor_Induk = ΣKontribusiT / BobotInduk
+        const skorInduk    = Math.min(100, Math.max(10, sumKontribusiT / bobotInduk));
+        const kontribInduk = skorInduk * bobotInduk;
+
+        if (outputSkor)    outputSkor.value    = skorInduk.toFixed(2);
+        if (outputKontrib) outputKontrib.value = kontribInduk.toFixed(2);
     }
 });
 </script>

@@ -240,7 +240,11 @@ document.querySelectorAll('.kpi-unit-input').forEach(function (input) {
         })
         .then(function (response) { return response.json(); })
         .then(function (data) {
-            if (data.csrf_hash) CSRF_HASH_UNIT = data.csrf_hash;
+            if (data.csrf_hash) {
+                CSRF_HASH_UNIT = data.csrf_hash;
+                document.querySelectorAll('input[type="hidden"][name="' + csrfTokenName + '"]')
+                        .forEach(function(el) { el.value = data.csrf_hash; });
+            }
 
             if (!capaianBadge) return;
 

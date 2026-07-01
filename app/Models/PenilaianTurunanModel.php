@@ -9,7 +9,7 @@ class PenilaianTurunanModel extends Model
     protected $primaryKey    = 'id';
     protected $allowedFields = [
         'penilaian_id', 'kpi_pegawai_turunan_id',
-        'realisasi', 'catatan',
+        'realisasi', 'skor', 'nilai_kontribusi', 'catatan',
     ];
     protected $useTimestamps = true;
 

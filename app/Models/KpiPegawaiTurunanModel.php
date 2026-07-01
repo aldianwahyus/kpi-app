@@ -9,7 +9,9 @@ class KpiPegawaiTurunanModel extends Model
     protected $primaryKey    = 'id';
     protected $allowedFields = [
         'kpi_pegawai_id', 'nama_turunan',
-        'bobot', 'target', 'urutan', 'is_active',
+        'bobot', 'target', 'deskripsi_target',
+        'polarity', 'perubahan_polarity', 'satuan',
+        'urutan', 'is_active',
     ];
     protected $useTimestamps = true;
 
