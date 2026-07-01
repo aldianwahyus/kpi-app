@@ -70,6 +70,10 @@ $routes->group('', ['filter' => 'auth'], function($routes) {
     $routes->get('master/kpi-unit/(:num)/create',     'MasterController::kpiUnitCreate/$1');
     $routes->post('master/kpi-unit/(:num)/store',     'MasterController::kpiUnitStore/$1');
     $routes->get('master/kpi-unit/(:num)',            'MasterController::kpiUnit/$1');
+    $routes->get('master/kpi-unit/generate-kode',    'MasterController::kpiUnitGenerateKode');
+    $routes->get('master/kpi-unit/(:num)/import',         'MasterController::kpiUnitImportForm/$1');
+    $routes->get('master/kpi-unit/(:num)/import-template','MasterController::kpiUnitImportTemplate/$1');
+    $routes->post('master/kpi-unit/(:num)/import',         'MasterController::kpiUnitImportProcess/$1');
     // ↑ Route dengan (:num) paling akhir agar tidak menimpa route spesifik
 
     // ── Data Unit Kerja ───────────────────────────────────
@@ -131,6 +135,9 @@ $routes->group('', ['filter' => 'auth'], function($routes) {
     $routes->post('kpi-pegawai/save-bobot/(:num)', 'KpiPegawaiController::saveBobot/$1');
     $routes->get('kpi-pegawai/delete/(:num)',      'KpiPegawaiController::delete/$1');
     $routes->post('kpi-pegawai/copy/(:num)',       'KpiPegawaiController::copy/$1'); // <-- UBAH copyFrom MENJADI copy DI SINI
+    $routes->post('kpi-pegawai/turunan/add/(:num)',    'KpiPegawaiController::addTurunan/$1');
+    $routes->get('kpi-pegawai/turunan/delete/(:num)',  'KpiPegawaiController::deleteTurunan/$1');
+    $routes->post('kpi-pegawai/turunan/update/(:num)', 'KpiPegawaiController::updateTurunan/$1');
 
     // Approval
     $routes->post('penilaian/submit/(:num)',  'PenilaianController::submit/$1');

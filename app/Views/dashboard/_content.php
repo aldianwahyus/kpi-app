@@ -209,3 +209,207 @@
     <?php endif; ?>
   </div>
 </div>
+
+<?php if (!empty($daftar_status_pegawai)): ?>
+<?php
+// Pisahkan menjadi dua kelompok: belum dinilai dan sudah dinilai
+$belumDinilaiList = array_values(array_filter($daftar_status_pegawai,
+    fn($p) => empty($p['jumlah_kpi_dinilai']) || (int)$p['jumlah_kpi_dinilai'] === 0
+));
+$sudahDinilaiList = array_values(array_filter($daftar_status_pegawai,
+    fn($p) => !empty($p['jumlah_kpi_dinilai']) && (int)$p['jumlah_kpi_dinilai'] > 0
+));
+?>
+<div class="card border-0 shadow-sm mt-3">
+  <div class="card-header py-2 d-flex align-items-center justify-content-between"
+       style="background:#fff;border-bottom:2px solid #e5e7eb">
+    <div>
+      <h6 class="mb-0 fw-semibold" style="color:#1F4E79;font-size:14px">
+        <i class="ti ti-users me-1"></i> Status Penilaian Pegawai
+        <span class="text-muted fw-normal" style="font-size:12px">
+          — <?= count($daftar_status_pegawai) ?> pegawai total
+        </span>
+      </h6>
+    </div>
+    <!-- Filter / Search real-time -->
+    <div class="input-group input-group-sm" style="max-width:240px">
+      <span class="input-group-text bg-light border-end-0">
+        <i class="ti ti-search" style="font-size:13px"></i>
+      </span>
+      <input type="text" id="cari-status-pegawai" class="form-control border-start-0"
+             placeholder="Cari nama pegawai..." autocomplete="off">
+    </div>
+  </div>
+
+  <!-- Tab Belum / Sudah -->
+  <div class="px-3 pt-2">
+    <ul class="nav nav-tabs nav-tabs-sm" id="tabStatusPegawai" role="tablist"
+        style="border-bottom:none;gap:4px">
+      <li class="nav-item">
+        <button class="nav-link active py-1 px-3" data-bs-toggle="tab"
+                data-bs-target="#tabBelum" style="font-size:13px">
+          <i class="ti ti-clock me-1 text-warning"></i>
+          Belum Dinilai
+          <span class="badge ms-1"
+                style="background:#FCE4D6;color:#C00000;font-size:11px">
+            <?= count($belumDinilaiList) ?>
+          </span>
+        </button>
+      </li>
+      <li class="nav-item">
+        <button class="nav-link py-1 px-3" data-bs-toggle="tab"
+                data-bs-target="#tabSudah" style="font-size:13px">
+          <i class="ti ti-circle-check me-1 text-success"></i>
+          Sudah Dinilai
+          <span class="badge ms-1"
+                style="background:#C6EFCE;color:#375623;font-size:11px">
+            <?= count($sudahDinilaiList) ?>
+          </span>
+        </button>
+      </li>
+    </ul>
+  </div>
+
+  <div class="tab-content" id="tabStatusPegawaiContent">
+
+    <!-- TAB BELUM DINILAI -->
+    <div class="tab-pane fade show active" id="tabBelum">
+      <?php if (empty($belumDinilaiList)): ?>
+        <div class="text-center py-5 text-muted">
+          <i class="ti ti-circle-check fs-1 d-block mb-2" style="color:#70AD47"></i>
+          <div class="fw-semibold">Semua pegawai sudah dinilai!</div>
+          <small>Tidak ada yang tersisa untuk periode ini.</small>
+        </div>
+      <?php else: ?>
+      <div class="table-responsive">
+        <table class="table table-sm table-hover align-middle mb-0"
+               style="font-size:13px" id="tabelBelumDinilai">
+          <thead style="background:#FFF3F3">
+            <tr>
+              <th class="ps-3" style="width:30px">#</th>
+              <th>Nama Pegawai</th>
+              <th>Divisi</th>
+              <th>Jabatan</th>
+              <th class="text-center" style="width:100px">Status</th>
+              <th class="text-center" style="width:80px">Aksi</th>
+            </tr>
+          </thead>
+          <tbody>
+            <?php foreach ($belumDinilaiList as $i => $p): ?>
+            <tr class="status-pegawai-row"
+                data-search="<?= esc(strtolower($p['nama'] . ' ' . ($p['divisi'] ?? '') . ' ' . ($p['jabatan'] ?? ''))) ?>">
+              <td class="ps-3 text-muted"><?= $i + 1 ?></td>
+              <td>
+                <div class="fw-semibold"><?= esc($p['nama']) ?></div>
+                <?php if ($p['unit'] ?? ''): ?>
+                  <small class="text-muted"><?= esc($p['unit']) ?></small>
+                <?php endif; ?>
+              </td>
+              <td class="text-muted" style="font-size:12px">
+                <?= esc($p['divisi'] ?? '—') ?>
+              </td>
+              <td class="text-muted" style="font-size:12px">
+                <?= esc($p['jabatan'] ?? '—') ?>
+              </td>
+              <td class="text-center">
+                <span class="badge" style="background:#FCE4D6;color:#C00000;font-size:11px;padding:3px 8px">
+                  Belum Dinilai
+                </span>
+              </td>
+              <td class="text-center">
+                <?php if (in_array($role, ['admin', 'drafter'])): ?>
+                <a href="<?= base_url('penilaian/form/' . $p['id']) ?>"
+                   class="btn btn-outline-primary btn-sm py-0 px-2"
+                   style="font-size:11px">
+                  Input
+                </a>
+                <?php endif; ?>
+              </td>
+            </tr>
+            <?php endforeach; ?>
+          </tbody>
+        </table>
+      </div>
+      <?php endif; ?>
+    </div>
+
+    <!-- TAB SUDAH DINILAI -->
+    <div class="tab-pane fade" id="tabSudah">
+      <?php if (empty($sudahDinilaiList)): ?>
+        <div class="text-center py-5 text-muted">
+          <i class="ti ti-clipboard-list fs-1 d-block mb-2"></i>
+          <div class="fw-semibold">Belum ada penilaian yang selesai.</div>
+        </div>
+      <?php else: ?>
+      <div class="table-responsive">
+        <table class="table table-sm table-hover align-middle mb-0"
+               style="font-size:13px" id="tabelSudahDinilai">
+          <thead style="background:#F0FDF4">
+            <tr>
+              <th class="ps-3" style="width:30px">#</th>
+              <th>Nama Pegawai</th>
+              <th>Divisi</th>
+              <th class="text-center">Nilai Akhir</th>
+              <th class="text-center">Status</th>
+              <th class="text-center" style="width:80px">Aksi</th>
+            </tr>
+          </thead>
+          <tbody>
+            <?php foreach ($sudahDinilaiList as $i => $p): ?>
+            <?php
+              $nilaiAkhir   = (float)($p['nilai_akhir'] ?? 0);
+              $statusPen    = $p['status_penilaian'] ?? 'draft';
+              $statusLabel  = match($statusPen) {
+                  'approved'  => ['Disetujui',   '#C6EFCE', '#375623'],
+                  'submitted' => ['Menunggu',     '#BDD7EE', '#1F4E79'],
+                  'rejected'  => ['Ditolak',      '#FCE4D6', '#C00000'],
+                  default     => ['Draft',         '#F5F5F5', '#666'],
+              };
+            ?>
+            <tr class="status-pegawai-row"
+                data-search="<?= esc(strtolower($p['nama'] . ' ' . ($p['divisi'] ?? '') . ' ' . ($p['jabatan'] ?? ''))) ?>">
+              <td class="ps-3 text-muted"><?= $i + 1 ?></td>
+              <td>
+                <div class="fw-semibold"><?= esc($p['nama']) ?></div>
+                <small class="text-muted"><?= esc($p['jabatan'] ?? '') ?></small>
+              </td>
+              <td class="text-muted" style="font-size:12px">
+                <?= esc($p['divisi'] ?? '—') ?>
+              </td>
+              <td class="text-center fw-bold" style="color:#2E75B6;font-size:14px">
+                <?= number_format($nilaiAkhir, 2) ?>
+              </td>
+              <td class="text-center">
+                <span class="badge"
+                      style="background:<?= $statusLabel[1] ?>;color:<?= $statusLabel[2] ?>;font-size:11px;padding:3px 8px">
+                  <?= $statusLabel[0] ?>
+                </span>
+              </td>
+              <td class="text-center">
+                <a href="<?= base_url('penilaian/form/' . $p['id']) ?>"
+                   class="btn btn-outline-secondary btn-sm py-0 px-2"
+                   style="font-size:11px">
+                  Lihat
+                </a>
+              </td>
+            </tr>
+            <?php endforeach; ?>
+          </tbody>
+        </table>
+      </div>
+      <?php endif; ?>
+    </div>
+
+  </div><!-- /.tab-content -->
+</div><!-- /.card -->
+
+<script>
+// Pencarian real-time di tabel status pegawai Dashboard
+document.getElementById('cari-status-pegawai').addEventListener('input', function () {
+    const q = this.value.toLowerCase().trim();
+    document.querySelectorAll('.status-pegawai-row').forEach(function (row) {
+        row.style.display = (!q || row.dataset.search.includes(q)) ? '' : 'none';
+    });
+});
+</script>
+<?php endif; ?>

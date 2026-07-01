@@ -31,6 +31,28 @@ class PenilaianUnitController extends BaseController
         $grouped      = $this->divisiModel->getGroupedByDirektorat();
         $rekap        = [];
 
+        // Drafter & Approver HANYA boleh melihat divisinya sendiri di
+        // daftar ini — tidak terkecuali. Sebelumnya seluruh divisi
+        // perusahaan ditampilkan di sini meski form input sudah dilindungi
+        // checkDivisiAccess(), sehingga nama dan rekap ringkas divisi lain
+        // tetap terlihat oleh role yang seharusnya dibatasi.
+        $role = session()->get('role');
+        if (in_array($role, ['drafter', 'approver'])) {
+            $myPegawaiId = session()->get('pegawai_id');
+            $myDivisiId  = $myPegawaiId
+                ? ($this->divisiModel->db->table('pegawai')->where('id', $myPegawaiId)->get()->getRowArray()['divisi_id'] ?? null)
+                : null;
+
+            $filteredGrouped = [];
+            foreach ($grouped as $direktoratNama => $divisiList) {
+                $matching = array_values(array_filter($divisiList, fn($d) => $d['id'] == $myDivisiId));
+                if (!empty($matching)) {
+                    $filteredGrouped[$direktoratNama] = $matching;
+                }
+            }
+            $grouped = $filteredGrouped;
+        }
+
         if ($periodeAktif) {
             $rows = $this->penilaianUnitModel->getRekapPeriode($periodeAktif['id']);
             foreach ($rows as $row) {
@@ -51,6 +73,9 @@ class PenilaianUnitController extends BaseController
     // ── Form Input KPI Unit ──────────────────────────────────
     public function form(int $divisiId): string
     {
+        $authCheck = $this->checkDivisiAccess($divisiId);
+        if ($authCheck !== true) return $authCheck;
+
         $periodeAktif = $this->periodeModel->getAktif();
         if (!$periodeAktif) {
             return redirect()->to(base_url('penilaian-unit'))
@@ -101,13 +126,21 @@ class PenilaianUnitController extends BaseController
     // ── Simpan KPI Unit — tanpa bobot ────────────────────────
     public function store(int $divisiId)
     {
+        $authCheck = $this->checkDivisiAccess($divisiId);
+        if ($authCheck !== true) return $authCheck;
+
         $periodeAktif = $this->periodeModel->getAktif();
         if (!$periodeAktif) {
             return redirect()->to(base_url('penilaian-unit'))
                             ->with('error', 'Tidak ada periode aktif.');
         }
 
-        $divisi  = $this->divisiModel->find($divisiId);
+        $divisi = $this->divisiModel->find($divisiId);
+        if (!$divisi) {
+            return redirect()->to(base_url('penilaian-unit'))
+                            ->with('error', 'Divisi tidak ditemukan.');
+        }
+
         $kpiList = $this->kpiUnitModel->getByDirektorat($divisi['direktorat_id']);
 
         $targets = $this->request->getPost('target')    ?? [];
@@ -144,13 +177,13 @@ class PenilaianUnitController extends BaseController
     // ── AJAX Hitung Capaian ──────────────────────────────────
     public function ajaxHitung()
     {
-        $kpiId     = $this->request->getPost('kpi_id');
+        $kpiId     = (int)$this->request->getPost('kpi_id');
         $target    = (float)$this->request->getPost('target');
         $realisasi = (float)$this->request->getPost('realisasi');
 
         $kpi = $this->kpiUnitModel->find($kpiId);
         if (!$kpi) {
-            return $this->response->setJSON(['capaian'=>0,'pct'=>'0%']);
+            return $this->response->setJSON(['capaian'=>0,'pct'=>'0%','csrf_hash'=>csrf_hash()]);
         }
 
         $capaian = ($target > 0 && $realisasi > 0)
@@ -167,11 +200,33 @@ class PenilaianUnitController extends BaseController
             'capaian'    => $capaian,
             'pct'        => round($capaian * 100, 2) . '%',
             'kontribusi' => round($kontribusi * 100, 2),
+            'csrf_hash'  => csrf_hash(),
             'color'      => $capaian >= 1
                 ? 'success'
                 : ($capaian >= 0.76
                     ? 'primary'
                     : ($capaian >= 0.61 ? 'warning' : 'danger')),
         ]);
+    }
+
+    // ── Helper: Otorisasi akses divisi (dipakai form() & store()) ──
+    private function checkDivisiAccess(int $divisiId)
+    {
+        $role = session()->get('role');
+        if (!in_array($role, ['admin', 'hr', 'drafter', 'approver'])) {
+            return $this->forbidden('Anda tidak memiliki kewenangan untuk mengakses KPI Unit.');
+        }
+
+        if (in_array($role, ['drafter', 'approver'])) {
+            $myPegawaiId = session()->get('pegawai_id');
+            $myPegawai   = $myPegawaiId
+                ? $this->divisiModel->db->table('pegawai')->where('id', $myPegawaiId)->get()->getRowArray()
+                : null;
+            if (!$myPegawai || (int)$myPegawai['divisi_id'] !== $divisiId) {
+                return $this->forbidden('Anda hanya dapat mengakses KPI Unit untuk divisi Anda sendiri.');
+            }
+        }
+
+        return true;
     }
 }

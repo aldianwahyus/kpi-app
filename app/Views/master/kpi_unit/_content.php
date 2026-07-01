@@ -15,6 +15,24 @@
      class="btn btn-primary btn-sm">
     <i class="ti ti-plus me-1"></i> Tambah KPI
   </a>
+  <a href="<?= base_url("master/kpi-unit/{$direktorat['id']}/import") ?>"
+     class="btn btn-outline-secondary btn-sm">
+    <i class="ti ti-file-import me-1"></i> Import Excel
+  </a>
+</div>
+
+<!-- Fitur Pencarian KPI Unit -->
+<div class="mb-3 d-flex align-items-center gap-3 flex-wrap">
+  <div class="input-group input-group-sm" style="max-width:340px">
+    <span class="input-group-text bg-light"><i class="ti ti-search text-muted"></i></span>
+    <input type="text" id="cari-kpi-unit" class="form-control"
+           placeholder="Cari nama KPI atau kode..." autocomplete="off">
+    <button type="button" class="btn btn-light border" id="reset-cari-kpi"
+            title="Reset" style="display:none">
+      <i class="ti ti-x" style="font-size:12px"></i>
+    </button>
+  </div>
+  <small class="text-muted" id="info-cari-kpi" style="font-size:11px"></small>
 </div>
 
 <!-- Total bobot -->
@@ -59,7 +77,7 @@ $persp_colors = [
       </thead>
       <tbody>
         <?php foreach ($kpis as $kpi): ?>
-        <tr>
+        <tr class="kpi-unit-row" data-search="<?= esc(strtolower($kpi['nama_kpi'] . ' ' . $kpi['kode'] . ' ' . $kpi['satuan'])) ?>">
           <td class="text-muted"><?= $kpi['urutan'] ?></td>
           <td class="fw-semibold"><?= esc($kpi['nama_kpi']) ?></td>
           <td>
@@ -117,3 +135,32 @@ $persp_colors = [
     Belum ada KPI Unit untuk direktorat ini.
   </div>
 <?php endif; ?>
+<script>
+(function () {
+    const input   = document.getElementById('cari-kpi-unit');
+    const resetBtn= document.getElementById('reset-cari-kpi');
+    const info    = document.getElementById('info-cari-kpi');
+    const rows    = document.querySelectorAll('.kpi-unit-row');
+
+    function filter() {
+        const q = input.value.toLowerCase().trim();
+        resetBtn.style.display = q ? 'block' : 'none';
+        let tampil = 0;
+        rows.forEach(r => {
+            const match = !q || r.dataset.search.includes(q);
+            r.style.display = match ? '' : 'none';
+            if (match) tampil++;
+        });
+        info.textContent = q
+            ? `${tampil} dari ${rows.length} KPI ditemukan`
+            : '';
+    }
+
+    input.addEventListener('input', filter);
+    resetBtn.addEventListener('click', function () {
+        input.value = '';
+        filter();
+        input.focus();
+    });
+})();
+</script>

@@ -94,7 +94,7 @@
         <div class="alert alert-danger alert-dismissible py-2 mb-3"
              style="font-size:13px;border-radius:8px">
           <i class="ti ti-alert-circle me-1"></i>
-          <?= session()->getFlashdata('error') ?>
+          <?= esc(session()->getFlashdata('error')) ?>
           <button type="button" class="btn-close"
                   data-bs-dismiss="alert"></button>
         </div>
@@ -103,7 +103,7 @@
       <?php if (session()->getFlashdata('success')): ?>
         <div class="alert alert-success py-2 mb-3"
              style="font-size:13px;border-radius:8px">
-          <?= session()->getFlashdata('success') ?>
+          <?= esc(session()->getFlashdata('success')) ?>
         </div>
       <?php endif; ?>
 

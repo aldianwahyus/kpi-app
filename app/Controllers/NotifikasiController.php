@@ -28,7 +28,10 @@ class NotifikasiController extends BaseController
     }
 
     public function index(): string
-    {   
+    {
+        $check = $this->checkMenuAccess('notifikasi');
+        if ($check !== true) return $check;
+
         $periodeAktif = $this->periodeModel->getAktif();
 
         $users = $this->userModel->db->table('users u')
@@ -56,6 +59,9 @@ class NotifikasiController extends BaseController
 
     public function sendReminder(int $userId)
     {
+        $check = $this->checkMenuAccess('notifikasi');
+        if ($check !== true) return $check;
+
         $periodeAktif = $this->periodeModel->getAktif();
         if (!$periodeAktif) {
             return redirect()->back()
@@ -99,6 +105,9 @@ class NotifikasiController extends BaseController
 
     public function sendReminderAll()
     {
+        $check = $this->checkMenuAccess('notifikasi');
+        if ($check !== true) return $check;
+
         $periodeAktif = $this->periodeModel->getAktif();
         if (!$periodeAktif) {
             return redirect()->back()
@@ -145,6 +154,9 @@ class NotifikasiController extends BaseController
     // ── Halaman Histori Lengkap ───────────────────────────────
     public function histori(): string
     {
+        $check = $this->checkMenuAccess('notifikasi');
+        if ($check !== true) return $check;
+
         $statusFilter = $this->request->getGet('status') ?? '';
         $search       = $this->request->getGet('search')  ?? '';
 
@@ -201,10 +213,16 @@ class NotifikasiController extends BaseController
             ->where('is_active', 1)
             ->countAllResults();
 
-        $sudahDiisi = $this->penilaianModel->db->table('penilaian')
-            ->select('pegawai_id')
-            ->where('periode_id', $periodeId)
-            ->groupBy('pegawai_id')
+        // Hitung hanya pegawai DI DIVISI INI yang sudah memiliki minimal
+        // satu baris penilaian pada periode tersebut. Sebelumnya query ini
+        // tidak memfilter berdasarkan divisi sama sekali, sehingga pegawai
+        // yang sudah mengisi di divisi lain ikut terhitung untuk divisi ini.
+        $sudahDiisi = $this->penilaianModel->db->table('penilaian p')
+            ->select('p.pegawai_id')
+            ->join('pegawai pg', 'pg.id = p.pegawai_id')
+            ->where('p.periode_id', $periodeId)
+            ->where('pg.divisi_id', $divisiId)
+            ->groupBy('p.pegawai_id')
             ->get()->getNumRows();
 
         return max(0, $totalPegawai - $sudahDiisi);

@@ -17,6 +17,10 @@ class RolePermissionController extends BaseController
 
     public function index(): string
     {
+        if (session()->get('role') !== 'admin') {
+            return $this->forbidden('Hanya Administrator yang dapat mengakses Hak Akses Role.');
+        }
+
         $selectedRole = $this->request->getGet('role') ?? 'hr';
 
         $permissions = $this->permissionModel->getByRole($selectedRole);
@@ -39,6 +43,10 @@ class RolePermissionController extends BaseController
 
     public function save()
     {
+        if (session()->get('role') !== 'admin') {
+            return $this->forbidden('Hanya Administrator yang dapat mengubah Hak Akses Role.');
+        }
+
         $role     = $this->request->getPost('role');
         $menuIds  = $this->request->getPost('menu_id')  ?? [];
         $canView  = $this->request->getPost('can_view') ?? [];

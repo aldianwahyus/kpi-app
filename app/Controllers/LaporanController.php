@@ -43,6 +43,9 @@ class LaporanController extends BaseController
     // ════════════════════════════════════════════════════════
     public function pdf()
     {
+        $check = $this->checkMenuAccess('laporan_pdf');
+        if ($check !== true) return $check;
+
         $periodeId = $this->request->getGet('periode_id');
         if (!$periodeId) {
             $periodeAktif = $this->periodeModel->getAktif();
@@ -54,6 +57,10 @@ class LaporanController extends BaseController
         }
 
         $periode = $this->periodeModel->find($periodeId);
+        if (!$periode) {
+            return redirect()->back()->with('error', 'Periode tidak ditemukan.');
+        }
+
         $rekap   = $this->penilaianModel->getRekapKombinasi((int)$periodeId);
 
         // ── FIX: Hitung ulang counter distribusi untuk Skema Grade Baru (M, SB, B, C) ──
@@ -86,14 +93,31 @@ class LaporanController extends BaseController
     // ════════════════════════════════════════════════════════
     public function pdfPegawai(int $pegawaiId)
     {
+        $check = $this->checkMenuAccess('laporan_pdf');
+        if ($check !== true) return $check;
+
+        if (!$this->canAccessPegawai($pegawaiId)) return $this->forbidden();
+
         $periodeId = $this->request->getGet('periode_id');
         if (!$periodeId) {
             $aktif     = $this->periodeModel->getAktif();
             $periodeId = $aktif['id'] ?? null;
         }
 
-        $pegawai    = $this->pegawaiModel->find($pegawaiId);
-        $periode    = $this->periodeModel->find($periodeId);
+        if (!$periodeId) {
+            return redirect()->back()->with('error', 'Pilih periode terlebih dahulu.');
+        }
+
+        $pegawai = $this->pegawaiModel->find($pegawaiId);
+        if (!$pegawai) {
+            return redirect()->back()->with('error', 'Pegawai tidak ditemukan.');
+        }
+
+        $periode = $this->periodeModel->find($periodeId);
+        if (!$periode) {
+            return redirect()->back()->with('error', 'Periode tidak ditemukan.');
+        }
+
         $nilaiAkhir = $this->penilaianModel->getNilaiAkhir($pegawaiId, (int)$periodeId);
         $grade      = $nilaiAkhir > 0 ? $this->calculator->getGrade($nilaiAkhir) : '—';
         $gradeLabel = $grade !== '—' ? $this->calculator->getGradeLabel($grade) : '—';
@@ -101,11 +125,10 @@ class LaporanController extends BaseController
         // Detail per KPI
         $detail = $this->penilaianModel->db->table('penilaian p')
             ->select('p.*, k.nama_kpi, k.kode, k.satuan,
-                      k.polarity, k.perspektif, kd.bobot')
+                      k.polarity, k.perspektif, kp.bobot')
             ->join('kpi_unit k', 'k.id = p.kpi_id')
-            ->join('kpi_divisi kd',
-                   'kd.kpi_id = p.kpi_id AND kd.divisi_id = '
-                   . (int)($pegawai['divisi_id'] ?? 0))
+            ->join('kpi_pegawai kp',
+                   'kp.kpi_id = p.kpi_id AND kp.pegawai_id = p.pegawai_id')
             ->where('p.pegawai_id', $pegawaiId)
             ->where('p.periode_id', $periodeId)
             ->orderBy('k.perspektif', 'ASC')
@@ -142,13 +165,24 @@ class LaporanController extends BaseController
     // ════════════════════════════════════════════════════════
     public function excel()
     {
+        $check = $this->checkMenuAccess('laporan_excel');
+        if ($check !== true) return $check;
+
         $periodeId = $this->request->getGet('periode_id');
         if (!$periodeId) {
             $aktif     = $this->periodeModel->getAktif();
             $periodeId = $aktif['id'] ?? null;
         }
 
+        if (!$periodeId) {
+            return redirect()->back()->with('error', 'Pilih periode terlebih dahulu.');
+        }
+
         $periode = $this->periodeModel->find($periodeId);
+        if (!$periode) {
+            return redirect()->back()->with('error', 'Periode tidak ditemukan.');
+        }
+
         $rekap   = $this->penilaianModel->getRekapKombinasi((int)$periodeId);
 
         $spreadsheet = new Spreadsheet();
@@ -292,24 +326,40 @@ class LaporanController extends BaseController
     // ════════════════════════════════════════════════════════
     public function excelPegawai(int $pegawaiId)
     {
+        $check = $this->checkMenuAccess('laporan_excel');
+        if ($check !== true) return $check;
+
+        if (!$this->canAccessPegawai($pegawaiId)) return $this->forbidden();
+
         $periodeId = $this->request->getGet('periode_id');
         if (!$periodeId) {
             $aktif     = $this->periodeModel->getAktif();
             $periodeId = $aktif['id'] ?? null;
         }
 
-        $pegawai    = $this->pegawaiModel->find($pegawaiId);
-        $periode    = $this->periodeModel->find($periodeId);
+        if (!$periodeId) {
+            return redirect()->back()->with('error', 'Pilih periode terlebih dahulu.');
+        }
+
+        $pegawai = $this->pegawaiModel->find($pegawaiId);
+        if (!$pegawai) {
+            return redirect()->back()->with('error', 'Pegawai tidak ditemukan.');
+        }
+
+        $periode = $this->periodeModel->find($periodeId);
+        if (!$periode) {
+            return redirect()->back()->with('error', 'Periode tidak ditemukan.');
+        }
+
         $nilaiAkhir = $this->penilaianModel->getNilaiAkhir($pegawaiId, (int)$periodeId);
         $grade      = $nilaiAkhir > 0 ? $this->calculator->getGrade($nilaiAkhir) : '—';
 
         $detail = $this->penilaianModel->db->table('penilaian p')
             ->select('p.*, k.nama_kpi, k.kode, k.satuan,
-                      k.polarity, k.perspektif, kd.bobot')
+                      k.polarity, k.perspektif, kp.bobot')
             ->join('kpi_unit k', 'k.id = p.kpi_id')
-            ->join('kpi_divisi kd',
-                   'kd.kpi_id = p.kpi_id AND kd.divisi_id = '
-                   . (int)($pegawai['divisi_id'] ?? 0))
+            ->join('kpi_pegawai kp',
+                   'kp.kpi_id = p.kpi_id AND kp.pegawai_id = p.pegawai_id')
             ->where('p.pegawai_id', $pegawaiId)
             ->where('p.periode_id', $periodeId)
             ->orderBy('k.perspektif', 'ASC')

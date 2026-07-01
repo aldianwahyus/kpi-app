@@ -32,6 +32,10 @@ class DraftUlangController extends BaseController
                              ->with('error', 'Hanya Approver yang dapat mengajukan draft ulang.');
         }
 
+        if (!$this->canAccessPegawai($pegawaiId)) {
+            return $this->forbidden('Anda hanya dapat mengajukan draft ulang untuk pegawai di divisi Anda sendiri.');
+        }
+
         $periodeAktif = $this->periodeModel->getAktif();
         if (!$periodeAktif) {
             return redirect()->back()->with('error', 'Tidak ada periode aktif.');
@@ -166,6 +170,14 @@ class DraftUlangController extends BaseController
         }
 
         $records = $query->findAll();
+
+        if (empty($records)) {
+            return redirect()->to(base_url('draft-ulang'))
+                             ->with('error',
+                                 'Permintaan dikonfirmasi pada catatan permintaan, namun tidak ditemukan '
+                                 . 'penilaian berstatus Approved yang sesuai untuk dikembalikan ke Draft. '
+                                 . 'Kemungkinan status sudah berubah sebelum konfirmasi ini diproses.');
+        }
 
         foreach ($records as $record) {
             $this->penilaianModel->update($record['id'], [

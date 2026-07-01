@@ -124,3 +124,57 @@ $role_order = ['admin','hr','drafter','approver','pegawai'];
   </div>
 </div>
 <?php endforeach; ?>
+
+<?php
+// ── Safety net: tampilkan user dengan role yang TIDAK dikenali sistem ──
+// Mencegah akun "hilang" dari tampilan apabila datanya memiliki role lama
+// atau tidak valid (misalnya sisa migrasi role yang belum dibersihkan).
+$unknownRoles = array_diff(array_keys($grouped), $role_order);
+?>
+<?php if (!empty($unknownRoles)): ?>
+<div class="card mb-3 border-0 shadow-sm" style="border:2px solid #C00000">
+  <div class="card-header py-2" style="background:#FCE4D6">
+    <span class="fw-semibold" style="color:#C00000;font-size:13px">
+      <i class="ti ti-alert-triangle me-1"></i> Role Tidak Dikenali — Perlu Ditinjau
+    </span>
+    <small class="d-block text-muted" style="font-size:11px">
+      Akun di bawah ini memiliki nilai role yang tidak terdaftar pada sistem saat ini.
+      Edit akun untuk memilih role yang valid.
+    </small>
+  </div>
+  <div class="card-body p-0">
+    <table class="table table-sm table-hover align-middle mb-0" style="font-size:13px">
+      <thead style="background:#f8fafc">
+        <tr>
+          <th>Nama</th>
+          <th>Email</th>
+          <th>Role (tidak valid)</th>
+          <th class="text-center" style="width:140px">Aksi</th>
+        </tr>
+      </thead>
+      <tbody>
+        <?php foreach ($unknownRoles as $unknownRole): ?>
+          <?php foreach ($grouped[$unknownRole] as $u): ?>
+          <tr>
+            <td class="fw-semibold"><?= esc($u['nama']) ?></td>
+            <td><code style="font-size:11px;color:#555"><?= esc($u['email']) ?></code></td>
+            <td>
+              <span class="badge" style="background:#FCE4D6;color:#C00000;font-size:11px">
+                <?= esc($u['role']) ?>
+              </span>
+            </td>
+            <td class="text-center">
+              <a href="<?= base_url("master/users/edit/{$u['id']}") ?>"
+                 class="btn btn-outline-primary"
+                 style="padding:2px 8px;font-size:11px">
+                <i class="ti ti-edit"></i> Perbaiki Role
+              </a>
+            </td>
+          </tr>
+          <?php endforeach; ?>
+        <?php endforeach; ?>
+      </tbody>
+    </table>
+  </div>
+</div>
+<?php endif; ?>

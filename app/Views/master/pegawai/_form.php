@@ -150,7 +150,7 @@
       <i class="ti ti-device-floppy me-1"></i>
       <?= $pegawai ? 'Update' : 'Simpan' ?>
     </button>
-    <a href="<?= base_url('master/pegawai') ?>"
+    <a href="<?= base_url('pegawai') ?>"
        class="btn btn-light btn-sm px-4 border">Batal</a>
   </div>
 </form>

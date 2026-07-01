@@ -119,7 +119,8 @@
                 <?php elseif ($p['status'] === 'tutup'): ?>
                   <a href="<?= base_url("master/periode/status/{$p['id']}/draft") ?>"
                      class="btn btn-outline-secondary"
-                     style="padding:2px 8px;font-size:11px">
+                     style="padding:2px 8px;font-size:11px"
+                     onclick="return confirmAction(event, { title: 'Buka Kembali Periode', text: 'Kembalikan periode ini ke status Draft?', icon: 'question', confirmText: 'Ya, Buka Kembali' })">
                     <i class="ti ti-refresh"></i> Buka Lagi
                   </a>
                 <?php endif; ?>

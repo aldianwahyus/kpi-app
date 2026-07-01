@@ -10,6 +10,13 @@ class PeriodeController extends BaseController
     public function __construct()
     {
         $this->periodeModel = new PeriodeModel();
+
+        $role = session()->get('role');
+        if ($role !== 'admin' && $role !== 'hr') {
+            session()->setFlashdata('error', 'Anda tidak memiliki akses ke halaman Periode Penilaian.');
+            header('Location: ' . base_url('dashboard'));
+            exit;
+        }
     }
 
     // ── Daftar Periode ───────────────────────────────────────
@@ -103,6 +110,12 @@ class PeriodeController extends BaseController
     // ── Update ───────────────────────────────────────────────
     public function update(int $id)
     {
+        $existingPeriode = $this->periodeModel->find($id);
+        if (!$existingPeriode) {
+            return redirect()->to(base_url('master/periode'))
+                             ->with('error', 'Periode tidak ditemukan.');
+        }
+
         $rules = [
             'nama'        => 'required',
             'tgl_mulai'   => 'required|valid_date',
@@ -138,6 +151,12 @@ class PeriodeController extends BaseController
     // ── Ubah Status Cepat ────────────────────────────────────
     public function setStatus(int $id, string $status)
     {
+        $periode = $this->periodeModel->find($id);
+        if (!$periode) {
+            return redirect()->to(base_url('master/periode'))
+                             ->with('error', 'Periode tidak ditemukan.');
+        }
+
         $allowed = ['draft', 'aktif', 'tutup'];
         if (!in_array($status, $allowed)) {
             return redirect()->to(base_url('master/periode'))
@@ -161,9 +180,42 @@ class PeriodeController extends BaseController
     public function delete(int $id)
     {
         $periode = $this->periodeModel->find($id);
-        if ($periode && $periode['status'] === 'aktif') {
+        if (!$periode) {
+            return redirect()->to(base_url('master/periode'))
+                             ->with('error', 'Periode tidak ditemukan.');
+        }
+
+        if ($periode['status'] === 'aktif') {
             return redirect()->to(base_url('master/periode'))
                              ->with('error', 'Periode aktif tidak bisa dihapus. Tutup dulu.');
+        }
+
+        // Cegah penghapusan periode yang masih memiliki data penilaian historis.
+        // Tanpa pengecekan ini, menghapus periode akan meninggalkan data yatim
+        // pada tabel penilaian, penilaian_unit, dan email_log — merusak Rekap,
+        // Audit Trail, dan Histori Notifikasi untuk periode tersebut.
+        $jumlahPenilaian = $this->periodeModel->db->table('penilaian')
+            ->where('periode_id', $id)
+            ->countAllResults();
+
+        if ($jumlahPenilaian > 0) {
+            return redirect()->to(base_url('master/periode'))
+                             ->with('error',
+                                 "Periode tidak bisa dihapus karena masih memiliki "
+                                 . "<strong>$jumlahPenilaian data penilaian individu</strong>. "
+                                 . "Hapus seluruh data penilaian terkait terlebih dahulu.");
+        }
+
+        $jumlahPenilaianUnit = $this->periodeModel->db->table('penilaian_unit')
+            ->where('periode_id', $id)
+            ->countAllResults();
+
+        if ($jumlahPenilaianUnit > 0) {
+            return redirect()->to(base_url('master/periode'))
+                             ->with('error',
+                                 "Periode tidak bisa dihapus karena masih memiliki "
+                                 . "<strong>$jumlahPenilaianUnit data penilaian unit</strong>. "
+                                 . "Hapus seluruh data penilaian terkait terlebih dahulu.");
         }
 
         $this->periodeModel->delete($id);

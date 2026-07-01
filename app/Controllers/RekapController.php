@@ -30,10 +30,34 @@ class RekapController extends BaseController
         $check = $this->checkMenuAccess('penilaian');
         if ($check !== true) return $check;
         
+        $role      = session()->get('role');
+        $myPegawaiId = session()->get('pegawai_id');
+
+        // Drafter & Approver HANYA boleh melihat rekap untuk divisinya
+        // sendiri — scope ini bersifat WAJIB dan diterapkan SEBELUM filter
+        // dropdown opsional (divisi_id/direktorat_id) dipertimbangkan, agar
+        // memilih divisi lain dari dropdown tidak pernah bisa menampilkan
+        // data divisi tersebut untuk role yang dibatasi.
+        $divisiScope = null;
+        if (in_array($role, ['drafter', 'approver']) && $myPegawaiId) {
+            $myPegawai   = (new \App\Models\PegawaiModel())->find($myPegawaiId);
+            $divisiScope = $myPegawai['divisi_id'] ?? null;
+        }
+
         $periodes     = $this->periodeModel->getAllOrdered();
         $periodeAktif = $this->periodeModel->getAktif();
         $divisiList   = $this->divisiModel->getActive();
         $direktoratList = $this->direktoratModel->getActive();
+
+        // Untuk Drafter/Approver, dropdown filter divisi/direktorat tidak
+        // relevan lagi (mereka hanya punya satu divisi), sehingga daftar
+        // pilihan dropdown juga dipersempit agar tidak menyesatkan secara
+        // visual — meski filter sebenarnya tetap dipaksa di level query.
+        if ($divisiScope) {
+            $divisiList = array_values(array_filter($divisiList, fn($d) => $d['id'] == $divisiScope));
+            $myDivisiDirektoratId = $divisiList[0]['direktorat_id'] ?? null;
+            $direktoratList = array_values(array_filter($direktoratList, fn($d) => $d['id'] == $myDivisiDirektoratId));
+        }
 
         // Filter dari request
         $periodeId  = $this->request->getGet('periode_id')
@@ -44,8 +68,40 @@ class RekapController extends BaseController
 
         $rekap = [];
         if ($periodeId) {
-            $rekap = $this->penilaianModel->getRekapKombinasi((int)$periodeId);
-            // ... filter tetap sama
+            // Scope WAJIB divisi diterapkan langsung di level SQL untuk
+            // Drafter/Approver — baris data divisi lain tidak pernah
+            // dimuat ke memori sama sekali.
+            $rekap = $this->penilaianModel->getRekapKombinasi((int)$periodeId, $divisiScope);
+
+            // Filter berdasarkan Divisi (dropdown opsional — hanya relevan
+            // untuk Admin/HR karena Drafter/Approver sudah dikunci di atas)
+            if ($divisiId !== '' && !$divisiScope) {
+                $rekap = array_values(array_filter($rekap,
+                    fn($r) => (string)($r['divisi_id'] ?? '') === (string)$divisiId
+                ));
+            }
+
+            // Filter berdasarkan Direktorat — divisi mana saja yang berada
+            // di bawah direktorat terpilih (dropdown opsional, sama seperti
+            // di atas — tidak relevan jika divisiScope sudah dikunci)
+            if ($direktoratId !== '' && !$divisiScope) {
+                $divisiIdsInDirektorat = array_column(
+                    array_filter($divisiList,
+                        fn($d) => (string)($d['direktorat_id'] ?? '') === (string)$direktoratId
+                    ),
+                    'id'
+                );
+                $rekap = array_values(array_filter($rekap,
+                    fn($r) => in_array($r['divisi_id'] ?? null, $divisiIdsInDirektorat)
+                ));
+            }
+
+            // Filter berdasarkan nama pegawai (pencarian)
+            if ($search !== '') {
+                $rekap = array_values(array_filter($rekap,
+                    fn($r) => stripos($r['nama'] ?? '', $search) !== false
+                ));
+            }
         }
 
         // Pagination manual
@@ -83,6 +139,11 @@ class RekapController extends BaseController
     // ── Detail penilaian satu pegawai ────────────────────────
     public function detail(int $pegawaiId): string
     {
+        $check = $this->checkMenuAccess('penilaian');
+        if ($check !== true) return $check;
+
+        if (!$this->canAccessPegawai($pegawaiId)) return $this->forbidden();
+
         $periodeId = $this->request->getGet('periode_id');
         if (!$periodeId) {
             $periodeAktif = $this->periodeModel->getAktif();
@@ -94,7 +155,12 @@ class RekapController extends BaseController
                              ->with('error', 'Pilih periode terlebih dahulu.');
         }
 
-        $pegawai    = (new \App\Models\PegawaiModel())->find($pegawaiId);
+        $pegawai = (new \App\Models\PegawaiModel())->find($pegawaiId);
+        if (!$pegawai) {
+            return redirect()->to(base_url('rekap'))
+                             ->with('error', 'Pegawai tidak ditemukan.');
+        }
+
         $periode    = $this->periodeModel->find($periodeId);
         $nilaiAkhir = $this->penilaianModel->getNilaiAkhir($pegawaiId, (int)$periodeId);
         $grade      = $nilaiAkhir > 0 ? $this->calculator->getGrade($nilaiAkhir) : null;
@@ -104,10 +170,10 @@ class RekapController extends BaseController
         $detail = $this->penilaianModel->db->table('penilaian p')
             ->select('p.*, k.nama_kpi, k.kode, k.satuan,
                       k.polarity, k.perubahan_polarity,
-                      k.perspektif, kd.bobot')
+                      k.perspektif, kp.bobot')
             ->join('kpi_unit k', 'k.id = p.kpi_id')
-            ->join('kpi_divisi kd',
-                   'kd.kpi_id = p.kpi_id AND kd.divisi_id = ' . ($pegawai['divisi_id'] ?? 0))
+            ->join('kpi_pegawai kp',
+                   'kp.kpi_id = p.kpi_id AND kp.pegawai_id = p.pegawai_id')
             ->where('p.pegawai_id', $pegawaiId)
             ->where('p.periode_id', $periodeId)
             ->orderBy('k.perspektif', 'ASC')
@@ -146,12 +212,12 @@ class RekapController extends BaseController
             return [
                 'avg'   => 0, 'max' => 0, 'min' => 0,
                 'count' => 0,
-                'grade_counts' => ['A'=>0,'B'=>0,'C'=>0,'D'=>0,'E'=>0],
+                'grade_counts' => ['M'=>0,'SB'=>0,'B'=>0,'C'=>0],
             ];
         }
 
         $values      = array_column($rekap, 'nilai_akhir');
-        $gradeCounts = ['A'=>0,'B'=>0,'C'=>0,'D'=>0,'E'=>0];
+        $gradeCounts = ['M'=>0,'SB'=>0,'B'=>0,'C'=>0];
         foreach ($rekap as $r) {
             $g = $r['grade'] ?? '—';
             if (isset($gradeCounts[$g])) $gradeCounts[$g]++;

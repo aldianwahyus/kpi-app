@@ -31,8 +31,22 @@ class DashboardController extends BaseController
         $role         = session()->get('role');
         $pegawaiId    = session()->get('pegawai_id');
 
+        // Drafter & Approver HANYA boleh melihat statistik Dashboard untuk
+        // divisinya sendiri — tidak terkecuali. Hanya Admin (dan HR, yang
+        // memiliki kewenangan lintas-divisi yang sama dengan Admin di
+        // seluruh modul lain) yang melihat data perusahaan secara utuh.
+        $divisiScope = null;
+        if (in_array($role, ['drafter', 'approver']) && $pegawaiId) {
+            $myPegawai   = $this->pegawaiModel->find($pegawaiId);
+            $divisiScope = $myPegawai['divisi_id'] ?? null;
+        }
+
         // ── Stat cards ────────────────────────────────────────
-        $totalPegawai  = $this->pegawaiModel->where('is_active', 1)->countAllResults();
+        $totalPegawaiQuery = $this->pegawaiModel->where('is_active', 1);
+        if ($divisiScope) {
+            $totalPegawaiQuery->where('divisi_id', $divisiScope);
+        }
+        $totalPegawai = $totalPegawaiQuery->countAllResults();
 
         $sudahDinilai  = 0;
         $belumDinilai  = 0;
@@ -51,8 +65,8 @@ class DashboardController extends BaseController
         if ($periodeAktif) {
             $periodeId = $periodeAktif['id'];
 
-            // Rekap semua pegawai
-            $rekap = $this->penilaianModel->getRekapKombinasi($periodeId);
+            // Rekap semua pegawai (difilter divisi untuk Drafter/Approver)
+            $rekap = $this->penilaianModel->getRekapKombinasi($periodeId, $divisiScope);
 
             $sudahDinilai = count($rekap);
             $belumDinilai = $totalPegawai - $sudahDinilai;
@@ -69,8 +83,8 @@ class DashboardController extends BaseController
                 }
             }
 
-            // Rata-rata per perspektif
-            $perspektifData = $this->getRataPerPerspektif($periodeId);
+            // Rata-rata per perspektif (difilter divisi untuk Drafter/Approver)
+            $perspektifData = $this->getRataPerPerspektif($periodeId, $divisiScope);
             $avgFinancial   = $perspektifData['Financial']        ?? 0;
             $avgCustomer    = $perspektifData['Customer']         ?? 0;
             $avgInternal    = $perspektifData['Internal Process'] ?? 0;
@@ -83,6 +97,36 @@ class DashboardController extends BaseController
                     ? $this->calculator->getGrade($nilaiSendiri)
                     : null;
             }
+        }
+
+        // ── Daftar lengkap status penilaian per pegawai ───────
+        // Mengambil seluruh pegawai aktif (difilter divisi untuk
+        // Drafter/Approver) beserta status penilaiannya pada periode
+        // aktif — dipakai untuk tabel "Belum Dinilai / Sudah Dinilai"
+        // di Dashboard agar ketahuan siapa saja yang belum dinilai.
+        $daftarStatusPegawai = [];
+        if ($periodeAktif) {
+            $semuaPegawaiQuery = $this->pegawaiModel->db->table('pegawai p')
+                ->select('p.id, p.nama, p.jabatan, p.unit,
+                          d.nama as divisi,
+                          SUM(pn.nilai_kontribusi) as nilai_akhir,
+                          COUNT(pn.id) as jumlah_kpi_dinilai,
+                          MAX(pn.status) as status_penilaian')
+                ->join('divisi d', 'd.id = p.divisi_id', 'left')
+                ->join('penilaian pn',
+                       'pn.pegawai_id = p.id AND pn.periode_id = ' . (int)$periodeAktif['id'],
+                       'left')
+                ->where('p.is_active', 1);
+
+            if ($divisiScope) {
+                $semuaPegawaiQuery->where('p.divisi_id', $divisiScope);
+            }
+
+            $daftarStatusPegawai = $semuaPegawaiQuery
+                ->groupBy('p.id')
+                ->orderBy('d.nama', 'ASC')
+                ->orderBy('p.nama', 'ASC')
+                ->get()->getResultArray();
         }
 
         return view('layouts/main', [
@@ -102,6 +146,7 @@ class DashboardController extends BaseController
                 'role'           => $role,
                 'nilai_sendiri'  => $nilaiSendiri,
                 'grade_sendiri'  => $gradeSendiri,
+                'daftar_status_pegawai' => $daftarStatusPegawai,
             ]),
             'extra_js' => view('dashboard/_scripts', [
                 'avg_financial' => round($avgFinancial, 2),
@@ -114,12 +159,19 @@ class DashboardController extends BaseController
     }
 
     // ── Hitung rata-rata capaian per perspektif ───────────────
-    private function getRataPerPerspektif(int $periodeId): array
+    private function getRataPerPerspektif(int $periodeId, ?int $divisiId = null): array
     {
-        $rows = $this->penilaianModel->db->table('penilaian p')
-            ->select('k.perspektif, AVG(p.capaian) * 100 as avg_capaian')
+        $builder = $this->penilaianModel->db->table('penilaian p')
+            ->select('k.perspektif, AVG(p.skor) as avg_capaian')
             ->join('kpi_unit k', 'k.id = p.kpi_id')
-            ->where('p.periode_id', $periodeId)
+            ->where('p.periode_id', $periodeId);
+
+        if ($divisiId !== null) {
+            $builder->join('pegawai pg', 'pg.id = p.pegawai_id')
+                    ->where('pg.divisi_id', $divisiId);
+        }
+
+        $rows = $builder
             ->groupBy('k.perspektif')
             ->get()->getResultArray();
 

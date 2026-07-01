@@ -163,7 +163,17 @@ function addMessage(content, isUser = false) {
 
     const bubble = document.createElement('div');
     bubble.className = isUser ? 'chat-bubble-user' : 'chat-bubble-ai';
-    bubble.innerHTML = content;
+    if (isUser) {
+        // Pesan milik pengguna selalu ditampilkan sebagai teks polos,
+        // tidak pernah dirender sebagai HTML — mencegah pesan yang
+        // berisi tag/script disuntikkan dan tereksekusi di browser sendiri.
+        bubble.textContent = content;
+    } else {
+        // Balasan AI sengaja dikirim server sebagai HTML terformat
+        // (markdown yang sudah di-escape lalu diubah ke tag <strong>/<em>/<ol>),
+        // sehingga innerHTML memang diperlukan di sini.
+        bubble.innerHTML = content;
+    }
 
     wrap.appendChild(avatar);
     wrap.appendChild(bubble);
@@ -214,9 +224,10 @@ async function sendMessage(message) {
         });
         const data = await res.json();
 
-        // Update CSRF hash
-        const newHash = res.headers.get('X-CSRF-TOKEN');
-        if (newHash) csrfHash = newHash;
+        // Perbarui token CSRF dari body JSON (bukan header — server tidak
+        // pernah mengirim header X-CSRF-TOKEN, sehingga pembacaan header
+        // sebelumnya tidak pernah benar-benar memperbarui token apa pun).
+        if (data.csrf_hash) csrfHash = data.csrf_hash;
 
         removeTyping();
         addMessage(data.reply || 'Tidak ada respons.');

@@ -11,14 +11,27 @@
   </a>
 </div>
 
-<div class="row g-3">
+<!-- Fitur Pencarian Direktorat -->
+<div class="mb-3">
+  <div class="input-group input-group-sm" style="max-width:360px">
+    <span class="input-group-text bg-light"><i class="ti ti-search text-muted"></i></span>
+    <input type="text" id="cari-direktorat" class="form-control"
+           placeholder="Cari direktorat..." autocomplete="off">
+    <button type="button" class="btn btn-light border" id="reset-cari-direktorat"
+            title="Reset pencarian" style="display:none">
+      <i class="ti ti-x" style="font-size:12px"></i>
+    </button>
+  </div>
+  <small class="text-muted" id="info-cari-direktorat" style="font-size:11px"></small>
+</div>
+
+<div class="row g-3" id="daftar-direktorat">
 <?php foreach ($list as $d): ?>
 <?php
-$s         = $summary[$d['id']] ?? ['total_kpi'=>0,'total_bobot'=>0];
-$bobot_pct = round($s['total_bobot'] * 100, 2);
-$bobot_ok  = $bobot_pct == 100;
+$s = $summary[$d['id']] ?? ['total_kpi'=>0];
 ?>
-<div class="col-md-6">
+<div class="col-md-6 direktorat-card"
+     data-search="<?= esc(strtolower($d['nama'] . ' ' . $d['kode'] . ' ' . ($d['deskripsi'] ?? '') . ' ' . ($d['singkatan'] ?? ''))) ?>">
   <div class="card border-0 shadow-sm">
     <div class="card-body">
       <div class="d-flex align-items-start justify-content-between mb-2">
@@ -55,31 +68,20 @@ $bobot_ok  = $bobot_pct == 100;
       </div>
       <hr class="my-2">
       <div class="row g-2 text-center">
-        <div class="col-4">
+        <div class="col-6">
           <div class="fw-bold" style="font-size:20px;color:#1F4E79">
             <?= $s['total_kpi'] ?>
           </div>
           <div style="font-size:11px;color:#888">KPI Unit</div>
         </div>
-        <div class="col-4">
-          <div class="fw-bold" style="font-size:20px;
-            color:<?= $bobot_ok ? '#375623' : '#BF9000' ?>">
-            <?= $bobot_pct ?>%
-          </div>
-          <div style="font-size:11px;color:#888">Total Bobot</div>
-        </div>
-        <div class="col-4">
+        <div class="col-6">
           <?php if ($s['total_kpi'] == 0): ?>
             <span class="badge" style="background:#FCE4D6;color:#C00000;font-size:11px">
               Belum ada KPI
             </span>
-          <?php elseif (!$bobot_ok): ?>
-            <span class="badge" style="background:#FFF2CC;color:#7F6000;font-size:11px">
-              Bobot belum 100%
-            </span>
           <?php else: ?>
             <span class="badge" style="background:#C6EFCE;color:#375623;font-size:11px">
-              ✓ Siap
+              ✓ <?= $s['total_kpi'] ?> KPI tersedia
             </span>
           <?php endif; ?>
           <div style="font-size:11px;color:#888;margin-top:2px">Status</div>
@@ -90,3 +92,32 @@ $bobot_ok  = $bobot_pct == 100;
 </div>
 <?php endforeach; ?>
 </div>
+<script>
+(function () {
+    const input   = document.getElementById('cari-direktorat');
+    const resetBtn= document.getElementById('reset-cari-direktorat');
+    const info    = document.getElementById('info-cari-direktorat');
+    const cards   = document.querySelectorAll('.direktorat-card');
+
+    function filter() {
+        const q = input.value.toLowerCase().trim();
+        resetBtn.style.display = q ? 'block' : 'none';
+        let tampil = 0;
+        cards.forEach(c => {
+            const match = !q || c.dataset.search.includes(q);
+            c.style.display = match ? '' : 'none';
+            if (match) tampil++;
+        });
+        info.textContent = q
+            ? `${tampil} dari ${cards.length} direktorat ditemukan`
+            : '';
+    }
+
+    input.addEventListener('input', filter);
+    resetBtn.addEventListener('click', function () {
+        input.value = '';
+        filter();
+        input.focus();
+    });
+})();
+</script>

@@ -62,9 +62,25 @@ class PenilaianModel extends Model
         return round((float)($result['total'] ?? 0), 2);
     }
 
-    public function getRekapKombinasi(int $periodeId): array
+    // Rekap rata-rata capaian & total kontribusi per perspektif untuk satu
+    // pegawai pada satu periode — dipakai oleh halaman Detail Penilaian (Rekap).
+    public function getRekapPerspektif(int $pegawaiId, int $periodeId): array
     {
-        $rows = $this->db->table('penilaian p')
+        return $this->db->table('penilaian p')
+            ->select('k.perspektif,
+                      AVG(p.skor) as avg_capaian,
+                      SUM(p.nilai_kontribusi) as total_kontribusi')
+            ->join('kpi_pegawai kp', 'kp.kpi_id = p.kpi_id AND kp.pegawai_id = p.pegawai_id')
+            ->join('kpi_unit k', 'k.id = p.kpi_id')
+            ->where('p.pegawai_id', $pegawaiId)
+            ->where('p.periode_id', $periodeId)
+            ->groupBy('k.perspektif')
+            ->get()->getResultArray();
+    }
+
+    public function getRekapKombinasi(int $periodeId, ?int $divisiId = null): array
+    {
+        $builder = $this->db->table('penilaian p')
             ->select('p.pegawai_id, pg.nama, pg.jabatan, pg.unit, pg.divisi_id, d.nama as divisi, dir.nama as direktorat,
                       SUM(p.nilai_kontribusi) as nilai_akhir, COUNT(p.id) as jumlah_kpi,
                       CASE 
@@ -76,7 +92,16 @@ class PenilaianModel extends Model
             ->join('pegawai pg', 'pg.id = p.pegawai_id')
             ->join('divisi d', 'd.id = pg.divisi_id', 'left')
             ->join('direktorat dir', 'dir.id = d.direktorat_id', 'left')
-            ->where('p.periode_id', $periodeId)
+            ->where('p.periode_id', $periodeId);
+
+        // Filter divisi — diterapkan di level SQL agar Drafter/Approver
+        // tidak pernah menerima baris data dari divisi lain sama sekali,
+        // bukan hanya disembunyikan di tampilan setelah data diambil.
+        if ($divisiId !== null) {
+            $builder->where('pg.divisi_id', $divisiId);
+        }
+
+        $rows = $builder
             ->groupBy('p.pegawai_id')
             ->orderBy('nilai_akhir', 'DESC')
             ->get()->getResultArray();

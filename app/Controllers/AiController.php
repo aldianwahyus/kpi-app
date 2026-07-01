@@ -27,7 +27,9 @@ class AiController extends BaseController
     // ── Halaman Chat AI ──────────────────────────────────────
     public function index(): string
     {
-        
+        $check = $this->checkMenuAccess('ai');
+        if ($check !== true) return $check;
+
         return view('layouts/main', [
             'title'   => 'AI Asisten KPI',
             'content' => view('ai/_chat'),
@@ -37,10 +39,16 @@ class AiController extends BaseController
     // ── AJAX Chat ────────────────────────────────────────────
     public function chat()
     {
+        $check = $this->checkMenuAccess('ai');
+        if ($check !== true) {
+            return $this->response->setJSON(['reply' => 'Anda tidak memiliki akses ke fitur ini.', 'csrf_hash' => csrf_hash()]);
+        }
+
         $message = trim($this->request->getPost('message') ?? '');
         if (empty($message)) {
             return $this->response->setJSON([
                 'reply' => 'Pesan tidak boleh kosong.',
+                'csrf_hash' => csrf_hash(),
             ]);
         }
 
@@ -52,12 +60,21 @@ class AiController extends BaseController
         // Format markdown sederhana ke HTML secara aman
         $reply = $this->formatReply($reply);
 
-        return $this->response->setJSON(['reply' => $reply]);
+        return $this->response->setJSON(['reply' => $reply, 'csrf_hash' => csrf_hash()]);
     }
 
     // ── Analisis Otomatis Pegawai ────────────────────────────
     public function analisisPegawai(int $pegawaiId)
     {
+        $check = $this->checkMenuAccess('ai');
+        if ($check !== true) {
+            return $this->response->setJSON(['reply' => 'Anda tidak memiliki akses ke fitur ini.']);
+        }
+
+        if (!$this->canAccessPegawai($pegawaiId)) {
+            return $this->response->setJSON(['reply' => 'Anda tidak memiliki akses ke data pegawai ini.']);
+        }
+
         $pegawai      = $this->pegawaiModel->find($pegawaiId);
         $periodeAktif = $this->periodeModel->getAktif();
 

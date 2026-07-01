@@ -16,7 +16,7 @@ class AuthController extends BaseController
     public function login()
     {
         if (session()->get('logged_in')) {
-            return redirect()->to('/dashboard');
+            return redirect()->to(base_url('dashboard'));
         }
         return view('auth/login');
     }
@@ -47,9 +47,14 @@ class AuthController extends BaseController
 
             log_message('warning', "Login gagal: $email dari IP: $ip");
 
+            // Simpan hanya email ke flashdata (bukan withInput(), yang akan
+            // menyimpan seluruh $_POST termasuk password dalam bentuk
+            // plaintext ke session — risiko tanpa manfaat, karena view
+            // login hanya pernah memanggil old('email'), tidak pernah
+            // old('password')).
             return redirect()->back()
                             ->with('error', 'Email atau password salah.')
-                            ->withInput();
+                            ->with('_ci_old_input', ['get' => [], 'post' => ['email' => $email]]);
         }
 
         // Login berhasil — hapus cache rate limit
@@ -57,13 +62,15 @@ class AuthController extends BaseController
 
         session()->regenerate();
         session()->set([
-            'logged_in'  => true,
-            'user_id'    => $user['id'],
-            'nama'       => $user['nama'],
-            'email'      => $user['email'],
-            'role'       => $user['role'],
-            'pegawai_id' => $user['pegawai_id'],
-            'login_time' => time(),
+            'logged_in'            => true,
+            'user_id'              => $user['id'],
+            'nama'                 => $user['nama'],
+            'email'                => $user['email'],
+            'role'                 => $user['role'],
+            'pegawai_id'           => $user['pegawai_id'],
+            'must_change_password' => (int)($user['must_change_password'] ?? 0),
+            'login_time'           => time(),
+            'last_activity'        => time(),
         ]);
 
         $this->userModel->update($user['id'], [

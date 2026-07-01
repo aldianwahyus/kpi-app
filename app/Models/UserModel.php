@@ -13,6 +13,7 @@ class UserModel extends Model
         'nama',
         'email',
         'password',
+        'must_change_password',
         'role',
         'is_active',
         'last_login'

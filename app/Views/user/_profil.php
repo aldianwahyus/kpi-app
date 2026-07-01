@@ -20,8 +20,8 @@
         <div style="font-size:12px;color:#888">
           <?= esc($user['email']) ?>
           &nbsp;·&nbsp;
-          <span class="role-badge role-<?= $user['role'] ?>">
-            <?= ucfirst($user['role']) ?>
+          <span class="role-badge role-<?= esc($user['role']) ?>">
+            <?= esc(ucfirst($user['role'])) ?>
           </span>
         </div>
         <div style="font-size:11px;color:#aaa;margin-top:3px">

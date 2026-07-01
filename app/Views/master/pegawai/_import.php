@@ -85,7 +85,8 @@
   <div class="card-body">
     <form action="<?= base_url('pegawai/import-process') ?>"
           method="post"
-          enctype="multipart/form-data">
+          enctype="multipart/form-data"
+          onsubmit="document.getElementById('btn-import-submit').disabled=true; document.getElementById('btn-import-submit').innerHTML='<i class=\'ti ti-loader\'></i> Memproses...'; return true;">
       <?= csrf_field() ?>
 
       <div class="mb-3">
@@ -102,8 +103,7 @@
       </div>
 
       <div class="d-flex gap-2">
-        <button type="submit" class="btn btn-primary btn-sm px-4"
-                onclick="this.disabled=true;this.innerHTML='<i class=\'ti ti-loader\'></i> Memproses...';this.form.submit()">
+        <button type="submit" id="btn-import-submit" class="btn btn-primary btn-sm px-4">
           <i class="ti ti-upload me-1"></i> Proses Import
         </button>
         <a href="<?= base_url('pegawai') ?>"

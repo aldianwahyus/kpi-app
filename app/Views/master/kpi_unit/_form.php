@@ -20,22 +20,32 @@
           <label class="form-label fw-semibold small">
             Perspektif <span class="text-danger">*</span>
           </label>
-          <select name="perspektif" class="form-select form-select-sm" required>
-            <?php foreach (['Financial','Customer','Internal Process','Learning & Growth'] as $p): ?>
-              <option value="<?= $p ?>"
-                <?= old('perspektif', $kpi['perspektif'] ?? '') === $p ? 'selected' : '' ?>>
-                <?= $p ?>
-              </option>
-            <?php endforeach; ?>
-          </select>
+          <?php if ($kpi): ?>
+            <input type="text" class="form-control form-control-sm" value="<?= esc($kpi['perspektif']) ?>" disabled style="background:#f8f9fa">
+            <input type="hidden" name="perspektif" value="<?= esc($kpi['perspektif']) ?>">
+          <?php else: ?>
+            <select name="perspektif" id="sel-perspektif" class="form-select form-select-sm" required>
+              <option value="">-- Pilih Perspektif --</option>
+              <?php foreach (['Financial','Customer','Internal Process','Learning & Growth'] as $p): ?>
+                <option value="<?= $p ?>" <?= old('perspektif') === $p ? 'selected' : '' ?>><?= $p ?></option>
+              <?php endforeach; ?>
+            </select>
+          <?php endif; ?>
         </div>
         <div class="col-md-6">
           <label class="form-label fw-semibold small">
-            Kode <span class="text-danger">*</span>
+            Kode
+            <?php if (!$kpi): ?>
+              <span class="text-muted" style="font-size:10px;font-weight:400">— otomatis</span>
+            <?php endif; ?>
           </label>
-          <input type="text" name="kode" class="form-control form-control-sm"
-                 value="<?= old('kode', $kpi['kode'] ?? '') ?>"
-                 placeholder="MR-IP1" required>
+          <div class="input-group input-group-sm">
+            <input type="text" name="kode" id="input-kode" class="form-control"
+                   value="<?= esc($kpi['kode'] ?? old('kode', '')) ?>"
+                   placeholder="Pilih perspektif dahulu"
+                   readonly style="background:#f8f9fa;font-family:monospace;font-weight:600;color:#1F4E79">
+          </div>
+          <div id="kode-info" class="form-text" style="font-size:10px;color:#1F4E79"></div>
         </div>
         <div class="col-12">
           <label class="form-label fw-semibold small">
@@ -96,3 +106,50 @@
     </form>
   </div>
 </div>
+<?php if (!$kpi): ?>
+<script>
+(function () {
+    const selPerspektif = document.getElementById('sel-perspektif');
+    const inputKode      = document.getElementById('input-kode');
+    const kodeInfo        = document.getElementById('kode-info');
+    const direktoratId    = <?= (int)$direktorat['id'] ?>;
+
+    if (!selPerspektif) return;
+
+    selPerspektif.addEventListener('change', function () {
+        const perspektif = this.value;
+        if (!perspektif) {
+            inputKode.value = '';
+            kodeInfo.innerHTML = '';
+            return;
+        }
+
+        inputKode.value = 'Memuat...';
+        kodeInfo.innerHTML = '';
+
+        const params = new URLSearchParams({
+            direktorat_id: direktoratId,
+            perspektif: perspektif
+        });
+
+        fetch('<?= base_url('master/kpi-unit/generate-kode') ?>?' + params.toString(), {
+            headers: { 'X-Requested-With': 'XMLHttpRequest' }
+        })
+            .then(r => r.json())
+            .then(data => {
+                if (data.kode) {
+                    inputKode.value = data.kode;
+                    kodeInfo.innerHTML = data.preview || '';
+                } else {
+                    inputKode.value = '';
+                    kodeInfo.innerHTML = '<span class="text-danger">' + (data.error || 'Gagal generate kode') + '</span>';
+                }
+            })
+            .catch(() => {
+                inputKode.value = '';
+                kodeInfo.innerHTML = '<span class="text-danger">Gagal terhubung ke server.</span>';
+            });
+    });
+})();
+</script>
+<?php endif; ?>

@@ -74,12 +74,12 @@ class Filters extends BaseFilters
     public array $globals = [
         'before' => [
             // 'honeypot',
-            // 'csrf',
+            'csrf',
             // 'invalidchars',
         ],
         'after' => [
             // 'honeypot',
-            // 'secureheaders',
+            'secureheaders',
         ],
     ];
 
@@ -109,10 +109,5 @@ class Filters extends BaseFilters
      */
     public array $filters = [];
     
-    public array $except = [
-    'csrf' => [
-        'penilaian/ajax-hitung',
-        'penilaian-unit/ajax-hitung',
-    ],
-];
+    public array $except = [];
 }

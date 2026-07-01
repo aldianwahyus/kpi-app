@@ -49,9 +49,11 @@ foreach ($pegawai as $p) {
         <tr>
           <th>Nama Pegawai</th>
           <th>Jabatan</th>
+          <th class="text-center">Setup KPI</th>
           <th class="text-center">KPI Diisi</th>
           <th class="text-center">Nilai Akhir</th>
           <th class="text-center">Grade</th>
+          <th class="text-center">Status</th>
           <th class="text-center">Aksi</th>
         </tr>
       </thead>
@@ -60,46 +62,76 @@ foreach ($pegawai as $p) {
         <?php
           $r          = $rekap[$p['id']] ?? null;
           $nilai      = $r ? round((float)$r['nilai_akhir'], 2) : 0;
-          $jumlah_kpi = $r['jumlah_kpi'] ?? 0; 
-          
-          // Penentuan visual badge status approval secara dinamis
-          $status       = $r['status'] ?? 'draft';
-          $status_text  = 'DF';
-          $status_bg    = '#6c757d'; 
-          
-          if ($status === 'submitted') {
-              $status_text = 'SB';
-              $status_bg   = '#0dcaf0'; 
-          } elseif ($status === 'approved') {
-              $status_text = 'AP';
-              $status_bg   = '#198754'; 
-          } elseif ($status === 'rejected') {
-              $status_text = 'RJ';
-              $status_bg   = '#dc3545'; 
-          }
+          $jumlah_kpi = $r['jumlah_kpi'] ?? 0;
+          $status     = $r['status'] ?? 'draft';
+          $sudahDiisi = $jumlah_kpi > 0;
 
           $grade       = '';
           $grade_bg    = '#f0f0f0';
           $grade_color = '#888';
-          
+
           if ($nilai > 0) {
-              // 2. Tinggal panggil objek $calculator yang sudah diinisiasi di atas
               $grade       = $calculator->getGrade($nilai);
               $gc          = $calculator->getGradeColor($grade);
               $grade_bg    = $gc['bg'];
               $grade_color = $gc['color'];
           }
+
+          // ── Tentukan label & warna kolom Status, serta tombol Aksi per role ──
+          // Mengikuti matriks: Drafter & Approver melihat informasi dan tombol
+          // yang berbeda pada status yang sama, sesuai ketentuan alur approval.
+          if (!$sudahDiisi || $status === 'draft') {
+              $statusLabel = 'Belum Dilakukan Penginputan Penilaian';
+              $statusBg    = '#f0f0f0';
+              $statusColor = '#888';
+              $aksiDrafter  = ['label' => $sudahDiisi ? 'Update' : 'Input', 'icon' => 'ti-edit',  'class' => 'btn-primary'];
+              $aksiApprover = null; // Approver belum bisa apa-apa, belum disubmit
+          } elseif ($status === 'submitted') {
+              $statusLabel = 'Draft';
+              $statusBg    = '#FFF3CD';
+              $statusColor = '#7F6000';
+              $aksiDrafter  = ['label' => 'Lihat', 'icon' => 'ti-eye', 'class' => 'btn-outline-secondary'];
+              $aksiApprover = ['label' => 'Review', 'icon' => 'ti-checklist', 'class' => 'btn-warning'];
+          } elseif ($status === 'approved') {
+              $statusLabel = 'Sudah Disetujui';
+              $statusBg    = '#C6EFCE';
+              $statusColor = '#375623';
+              $aksiDrafter  = ['label' => 'Lihat', 'icon' => 'ti-eye', 'class' => 'btn-outline-secondary'];
+              $aksiApprover = ['label' => 'Lihat', 'icon' => 'ti-eye', 'class' => 'btn-outline-secondary'];
+          } elseif ($status === 'rejected') {
+              $statusLabel = 'Ditolak — Perlu Diperbaiki';
+              $statusBg    = '#FCE4D6';
+              $statusColor = '#C00000';
+              $aksiDrafter  = ['label' => 'Update', 'icon' => 'ti-edit', 'class' => 'btn-danger'];
+              $aksiApprover = null; // sudah kembali ke tangan Drafter
+          } else {
+              $statusLabel = 'Belum Dilakukan Penginputan Penilaian';
+              $statusBg    = '#f0f0f0';
+              $statusColor = '#888';
+              $aksiDrafter  = ['label' => 'Input', 'icon' => 'ti-edit', 'class' => 'btn-primary'];
+              $aksiApprover = null;
+          }
+
+          $aksi = ($role === 'approver') ? $aksiApprover : $aksiDrafter;
         ?>
         <tr>
           <td class="fw-semibold">
             <?= esc($p['nama']) ?>
-            <span class="badge text-white fw-bold ms-1" 
-                  style="background:<?= $status_bg ?>; font-size:10px; padding:2px 5px;" 
-                  title="<?= strtoupper($status) ?>">
-               <?= $status_text ?>
-            </span>
           </td>
           <td class="text-muted"><?= esc($p['jabatan'] ?? '—') ?></td>
+          <td class="text-center">
+            <?php $jumlahSetup = $kpiSetupCount[$p['id']] ?? 0; ?>
+            <?php if ($jumlahSetup > 0): ?>
+              <span class="badge" style="background:#C6EFCE;color:#375623;font-size:11px">
+                ✓ <?= $jumlahSetup ?> KPI
+              </span>
+            <?php else: ?>
+              <span class="badge" style="background:#FCE4D6;color:#C00000;font-size:11px"
+                    title="KPI belum di-setup oleh Admin">
+                Belum di-setup
+              </span>
+            <?php endif; ?>
+          </td>
           <td class="text-center">
             <?php if ($jumlah_kpi > 0): ?>
               <span class="badge bg-light text-dark border" style="font-size:11px">
@@ -125,16 +157,20 @@ foreach ($pegawai as $p) {
             <?php endif; ?>
           </td>
           <td class="text-center">
-            <?php if ($periodeAktif): ?>
+            <span class="badge fw-semibold"
+                  style="background:<?= $statusBg ?>;color:<?= $statusColor ?>;
+                         font-size:11px;padding:4px 8px;white-space:normal">
+              <?= esc($statusLabel) ?>
+            </span>
+          </td>
+          <td class="text-center">
+            <?php if ($periodeAktif && $aksi): ?>
             <a href="<?= base_url("penilaian/form/{$p['id']}") ?>"
-               class="btn btn-sm <?= $status === 'approved' ? 'btn-outline-secondary' : 'btn-primary' ?>" style="font-size:12px">
-              <?php if ($status === 'approved'): ?>
-                <i class="ti ti-eye me-1"></i> Lihat
-              <?php else: ?>
-                <i class="ti ti-edit me-1"></i>
-                <?= $jumlah_kpi > 0 ? 'Update' : 'Input' ?>
-              <?php endif; ?>
+               class="btn btn-sm <?= $aksi['class'] ?>" style="font-size:12px">
+              <i class="ti <?= $aksi['icon'] ?> me-1"></i> <?= esc($aksi['label']) ?>
             </a>
+            <?php elseif ($periodeAktif && !$aksi): ?>
+              <span class="text-muted" style="font-size:11px">Menunggu Drafter</span>
             <?php else: ?>
             <span class="text-muted" style="font-size:12px">—</span>
             <?php endif; ?>

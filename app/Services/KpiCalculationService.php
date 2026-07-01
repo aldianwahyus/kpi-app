@@ -15,11 +15,21 @@ class KpiCalculationService
     ): float {
         if ($target == 0) return 10;
 
+        // Realisasi 0 selalu dianggap "belum diisi", bukan capaian sempurna —
+        // berlaku untuk seluruh polarity. Sebelumnya, untuk polarity 'min',
+        // realisasi 0 secara keliru menghasilkan rasio=1 (skor 100), yang
+        // menyebabkan rata-rata capaian tampil tinggi meski belum ada
+        // penilaian nyata yang diinput. Pemanggil (PenilaianController::store
+        // dan ajaxHitung) seharusnya sudah menyaring nilai ini lebih dulu;
+        // baris ini adalah pertahanan tambahan agar fungsi ini sendiri tidak
+        // pernah memunculkan skor tinggi dari realisasi kosong/nol.
+        if ($realisasi == 0) return 10;
+
         if ($polarity === 'max') {
             $rasio = $realisasi / $target;
         } else {
             // minimize: realisasi lebih kecil = lebih baik
-            $rasio = $realisasi == 0 ? 1 : $target / $realisasi;
+            $rasio = $target / $realisasi;
         }
 
         $skor = $rasio * 100;
@@ -29,6 +39,29 @@ class KpiCalculationService
         }
 
         return max(10, min(150, $skor)); // batas atas longgar untuk capped=false
+    }
+
+    /**
+     * Hitung capaian KPI Unit (realisasi vs target, mempertimbangkan polarity).
+     * Berbeda dari hitungSkorCapaian() yang dipakai untuk KPI individu pegawai
+     * (skala skor 10-100) — KPI Unit murni mencatat rasio capaian divisi,
+     * tanpa bobot per-pegawai, dengan hasil di-cap maksimal 150% (1.5).
+     */
+    public function hitungCapaian(
+        float  $target,
+        float  $realisasi,
+        string $polarity   = 'max',
+        string $perubahan  = 'pos'
+    ): float {
+        if ($target == 0 || $realisasi == 0) return 0;
+
+        if ($polarity === 'max' && $perubahan === 'pos') {
+            $capaian = $realisasi / $target;
+        } else {
+            $capaian = $target / $realisasi;
+        }
+
+        return min(1.5, max(0, $capaian));
     }
 
     public function hitungKontribusi(float $skor, float $bobot): float

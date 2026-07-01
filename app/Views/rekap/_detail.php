@@ -35,11 +35,10 @@
     <div class="stat-card text-center">
       <?php
       $gc = match($grade ?? '') {
-          'A' => ['#C6EFCE','#375623'],
-          'B' => ['#BDD7EE','#1F4E79'],
-          'C' => ['#FFF2CC','#7F6000'],
-          'D' => ['#FCE4D6','#C00000'],
-          'E' => ['#FFCCCC','#7B0000'],
+          'M'  => ['#1F4E79','#FFFFFF'],
+          'SB' => ['#C6EFCE','#375623'],
+          'B'  => ['#BDD7EE','#1F4E79'],
+          'C'  => ['#FFF2CC','#7F6000'],
           default => ['#f0f0f0','#888'],
       };
       ?>

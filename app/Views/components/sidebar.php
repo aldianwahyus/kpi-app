@@ -1,11 +1,11 @@
 <?php 
 $role = session()->get('role'); 
 
-$role_labels = [
-    'admin'    => 'Administrator',
+$roleLabels = [
+    'admin'    => 'Admin',
     'hr'       => 'HR Manager',
-    'drafter'  => 'Drafter (Input Nilai)',
-    'approver' => 'Approver (Review Nilai)',
+    'drafter'  => 'Drafter',
+    'approver' => 'Approver',
     'pegawai'  => 'Pegawai',
 ];
 
@@ -124,7 +124,11 @@ $canShow = function($kode) use ($permModel, $role) {
       <?php endif; ?>
 
     <!-- RUBRIK SAYA -->
-    <?php if ($canShow('rubrik')): ?>
+    <!-- DINONAKTIFKAN SEMENTARA: rute rubrik/esi, rubrik/pelatihan, dan nilai-saya
+         belum memiliki Controller/Route yang dibuat, sehingga sebelumnya menyebabkan
+         404 bagi pengguna role 'pegawai'. Aktifkan kembali blok ini setelah modul
+         Rubrik Saya benar-benar dibangun. -->
+    <?php if (false && $canShow('rubrik')): ?>
     <li class="nav-section mt-3">
       <a href="#collapseRubrik" data-bs-toggle="collapse" role="button" aria-expanded="false" style="color:inherit; text-decoration:none; display:flex; justify-content:between; width:100%; font-weight:600;">
         <span>Rubrik Saya</span>

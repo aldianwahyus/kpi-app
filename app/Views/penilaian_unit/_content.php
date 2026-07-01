@@ -191,6 +191,14 @@
 <script>
 const BASE_URL = '<?= base_url() ?>';
 
+// Token CSRF disimpan sebagai variabel yang dapat diperbarui — lihat
+// catatan yang sama di penilaian_unit/_form.php: Config\Security
+// ::$regenerate = true membuat token berubah setelah setiap verifikasi
+// berhasil, sehingga nilai statis akan membuat permintaan kedua dst.
+// pada halaman ini (yang berisi banyak baris KPI) ditolak server (403).
+let csrfTokenName = '<?= csrf_token() ?>';
+let csrfHashValue = '<?= csrf_hash() ?>';
+
 document.querySelectorAll('.kpi-unit-input').forEach(input => {
     input.addEventListener('input', function() {
         const kpiId     = this.dataset.kpi;
@@ -205,13 +213,17 @@ function hitungCapaian(kpiId, target, realisasi) {
     fd.append('kpi_id',    kpiId);
     fd.append('target',    target);
     fd.append('realisasi', realisasi);
-    fd.append('<?= csrf_token() ?>', '<?= csrf_hash() ?>');
+    fd.append(csrfTokenName, csrfHashValue);
 
     fetch(BASE_URL + 'penilaian-unit/ajax-hitung', {
-        method: 'POST', body: fd
+        method: 'POST',
+        headers: { 'X-Requested-With': 'XMLHttpRequest' },
+        body: fd
     })
     .then(r => r.json())
     .then(data => {
+        if (data.csrf_hash) csrfHashValue = data.csrf_hash;
+
         const el = document.getElementById('capaian_' + kpiId);
         if (!el) return;
         el.textContent = data.pct;

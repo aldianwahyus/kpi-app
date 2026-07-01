@@ -18,6 +18,8 @@ class UserController extends BaseController
     // ── Daftar User ──────────────────────────────────────────
     public function index(): string
     {
+        if (!in_array(session()->get('role'), ['admin', 'hr'])) return $this->forbidden();
+
         $users = $this->userModel->db->table('users u')
             ->select('u.*, p.nama as nama_pegawai,
                       p.jabatan, p.nip,
@@ -46,6 +48,8 @@ class UserController extends BaseController
     // ── Form Tambah ──────────────────────────────────────────
     public function create(): string
     {
+        if (!in_array(session()->get('role'), ['admin', 'hr'])) return $this->forbidden();
+
         return view('layouts/main', [
             'title'   => 'Tambah User',
             'content' => view('user/_form', [
@@ -59,6 +63,8 @@ class UserController extends BaseController
     // ── Simpan Tambah ────────────────────────────────────────
     public function store()
     {
+        if (!in_array(session()->get('role'), ['admin', 'hr'])) return $this->forbidden();
+
         if (!$this->validate([
             'nama'     => 'required',
             'email'    => 'required|valid_email|is_unique[users.email]',
@@ -70,15 +76,16 @@ class UserController extends BaseController
         }
 
         $this->userModel->insert([
-            'pegawai_id' => $this->request->getPost('pegawai_id') ?: null,
-            'nama'       => $this->request->getPost('nama'),
-            'email'      => $this->request->getPost('email'),
-            'password'   => password_hash(
+            'pegawai_id'           => $this->request->getPost('pegawai_id') ?: null,
+            'nama'                 => $this->request->getPost('nama'),
+            'email'                => $this->request->getPost('email'),
+            'password'             => password_hash(
                 $this->request->getPost('password'),
                 PASSWORD_DEFAULT
             ),
-            'role'       => $this->request->getPost('role'),
-            'is_active'  => 1,
+            'must_change_password' => 1,
+            'role'                 => $this->request->getPost('role'),
+            'is_active'            => 1,
         ]);
 
         return redirect()->to(base_url('master/users'))
@@ -88,11 +95,14 @@ class UserController extends BaseController
     // ── Form Edit ────────────────────────────────────────────
     public function edit(int $id): string
     {
+        if (!in_array(session()->get('role'), ['admin', 'hr'])) return $this->forbidden();
+
         $user = $this->userModel->find($id);
         if (!$user) {
             return redirect()->to(base_url('master/users'))
                              ->with('error', 'User tidak ditemukan.');
         }
+        unset($user['password']);
 
         return view('layouts/main', [
             'title'   => 'Edit User',
@@ -107,6 +117,8 @@ class UserController extends BaseController
     // ── Update ───────────────────────────────────────────────
     public function update(int $id)
     {
+        if (!in_array(session()->get('role'), ['admin', 'hr'])) return $this->forbidden();
+
         $emailRule = "required|valid_email|is_unique[users.email,id,$id]";
 
         if (!$this->validate([
@@ -134,7 +146,8 @@ class UserController extends BaseController
                 return redirect()->back()->withInput()
                                  ->with('error', 'Password minimal 6 karakter.');
             }
-            $data['password'] = password_hash($pwd, PASSWORD_DEFAULT);
+            $data['password']             = password_hash($pwd, PASSWORD_DEFAULT);
+            $data['must_change_password'] = 1;
         }
 
         $this->userModel->update($id, $data);
@@ -146,6 +159,8 @@ class UserController extends BaseController
     // ── Toggle Aktif ─────────────────────────────────────────
     public function toggle(int $id)
     {
+        if (!in_array(session()->get('role'), ['admin', 'hr'])) return $this->forbidden();
+
         // Jangan nonaktifkan diri sendiri
         if ($id == session()->get('user_id')) {
             return redirect()->to(base_url('master/users'))
@@ -166,19 +181,31 @@ class UserController extends BaseController
     // ── Reset Password ───────────────────────────────────────
     public function resetPassword(int $id)
     {
+        if (!in_array(session()->get('role'), ['admin', 'hr'])) return $this->forbidden();
+
+        $user = $this->userModel->find($id);
+        if (!$user) {
+            return redirect()->to(base_url('master/users'))
+                             ->with('error', 'User tidak ditemukan.');
+        }
+
         $defaultPwd = 'pegawai123';
         $this->userModel->update($id, [
-            'password' => password_hash($defaultPwd, PASSWORD_DEFAULT),
+            'password'             => password_hash($defaultPwd, PASSWORD_DEFAULT),
+            'must_change_password' => 1,
         ]);
 
         return redirect()->to(base_url('master/users'))
                          ->with('success',
-                             "Password direset ke: <strong>$defaultPwd</strong>");
+                             "Password direset ke: <strong>$defaultPwd</strong>. "
+                             . "Pengguna wajib mengganti password ini saat login berikutnya.");
     }
 
     // ── Hapus ────────────────────────────────────────────────
     public function delete(int $id)
     {
+        if (!in_array(session()->get('role'), ['admin', 'hr'])) return $this->forbidden();
+
         if ($id == session()->get('user_id')) {
             return redirect()->to(base_url('master/users'))
                              ->with('error', 'Tidak bisa menghapus akun sendiri.');
@@ -195,6 +222,7 @@ class UserController extends BaseController
     {
         $userId = session()->get('user_id');
         $user   = $this->userModel->find($userId);
+        if ($user) unset($user['password']);
 
         return view('layouts/main', [
             'title'   => 'Profil Saya',
@@ -228,14 +256,23 @@ class UserController extends BaseController
                 return redirect()->back()
                                  ->with('error', 'Password minimal 6 karakter.');
             }
-            $data['password'] = password_hash($pwd, PASSWORD_DEFAULT);
+            $data['password']             = password_hash($pwd, PASSWORD_DEFAULT);
+            // Hanya saat pemilik akun sendiri yang mengganti password,
+            // flag wajib ganti password dihapus. Admin mengatur password
+            // tidak pernah menghapus flag ini, sesuai kebijakan yang
+            // ditetapkan — hanya pemilik akun yang boleh tahu password
+            // aslinya secara permanen.
+            $data['must_change_password'] = 0;
         }
 
         $this->userModel->update($userId, $data);
 
-        // Update session nama
-        session()->set('nama', $data['nama']);
+        // Update session
+        session()->set('nama',  $data['nama']);
         session()->set('email', $data['email']);
+        if (isset($data['must_change_password'])) {
+            session()->set('must_change_password', $data['must_change_password']);
+        }
 
         return redirect()->to(base_url('profil'))
                          ->with('success', 'Profil berhasil diupdate.');

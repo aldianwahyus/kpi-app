@@ -245,13 +245,19 @@ $isAdmin = (session()->get('role') === 'admin'); // Shortcut flag penentu Admin
             $bobot    = (float)($kpi['bobot'] ?? 0);
             $polarity = $kpi['polarity'] ?? 'max';
             $isCapped = isset($kpi['is_capped']) ? (int)$kpi['is_capped'] : 1;
+
+            $listTurunan  = $turunanByInduk[$kpi['id']] ?? [];
+            $punyaTurunan = !empty($listTurunan);
+            $realisasiTurunanExisting = $realisasiTurunan[$kpi['id']] ?? [];
           ?>
           <tr class="kpi-row" 
               data-kpi="<?= $kpi['kpi_id'] ?>" 
+              data-induk-id="<?= $kpi['id'] ?>"
               data-target="<?= $target ?>" 
               data-bobot="<?= $bobot * 100 ?>" 
               data-polarity="<?= esc($polarity) ?>" 
-              data-capped="<?= $isCapped ?>">
+              data-capped="<?= $isCapped ?>"
+              data-punya-turunan="<?= $punyaTurunan ? '1' : '0' ?>">
               
             <td class="text-center">
               <code style="font-size:10px;color:#888"><?= esc($kpi['kode']) ?></code>
@@ -261,6 +267,11 @@ $isAdmin = (session()->get('role') === 'admin'); // Shortcut flag penentu Admin
               <small class="text-muted d-block" style="font-size:11px">
                 Satuan: <span class="badge bg-light text-dark border py-0 px-1"><?= esc($kpi['satuan']) ?></span> 
                 | Polarity: <strong><?= strtoupper($polarity) ?></strong>
+                <?php if ($punyaTurunan): ?>
+                  <span class="badge bg-light text-dark border ms-1" style="font-size:10px">
+                    <?= count($listTurunan) ?> Parameter Turunan
+                  </span>
+                <?php endif; ?>
               </small>
             </td>
             <td class="text-center fw-semibold" style="color:#1F4E79">
@@ -271,37 +282,99 @@ $isAdmin = (session()->get('role') === 'admin'); // Shortcut flag penentu Admin
             </td>
             <td class="text-center">
               <?php
-              $role          = session()->get('role');
               $currentStatus = $statusApproval['current'] ?? 'draft';
 
-              // Realisasi hanya dapat diisi/diubah ketika status Draft atau Rejected.
-              // Berlaku untuk seluruh role non-Administrator (Drafter maupun Approver).
-              $isRealisasiReadonly = ($role !== 'admin') && !in_array($currentStatus, ['draft', 'rejected']);
+              // Matriks akses Realisasi berdasarkan Role & Status:
+              // - Admin            : selalu dapat mengedit, kapan pun.
+              // - Drafter          : dapat mengedit saat status draft atau rejected
+              //                      (termasuk saat belum ada data sama sekali).
+              // - Approver         : dapat mengedit HANYA saat status submitted
+              //                      (melakukan Review), terkunci di status lain.
+              if ($role === 'admin') {
+                  $isRealisasiReadonly = false;
+              } elseif ($role === 'approver') {
+                  $isRealisasiReadonly = ($currentStatus !== 'submitted');
+              } else {
+                  // Drafter & role lainnya
+                  $isRealisasiReadonly = !in_array($currentStatus, ['draft', 'rejected']);
+              }
               ?>
-              <input type="number" name="realisasi[<?= $kpi['kpi_id'] ?>]"
-                     class="form-control realisasi-input"
-                     value="<?= $ex ? $ex['realisasi'] : '' ?>"
-                     <?= $isRealisasiReadonly ? 'readonly style="background:#f8f9fa;cursor:not-allowed"' : '' ?>>
+              <?php if ($punyaTurunan): ?>
+                <!-- Realisasi Induk selalu readonly & otomatis terisi SUM
+                     Realisasi seluruh Turunan, dihitung ulang real-time oleh
+                     JavaScript setiap kali salah satu input Turunan berubah. -->
+                <input type="number" id="realisasi_induk_<?= $kpi['kpi_id'] ?>"
+                       class="form-control realisasi-induk-readonly text-center"
+                       value="<?= $ex ? number_format((float)$ex['realisasi'], 2, '.', '') : '' ?>"
+                       readonly style="background:#f8f9fa;cursor:not-allowed"
+                       title="Otomatis dari SUM Realisasi Parameter Turunan di bawah">
+              <?php else: ?>
+                <input type="number" name="realisasi[<?= $kpi['kpi_id'] ?>]"
+                       class="form-control realisasi-input"
+                       value="<?= $ex ? $ex['realisasi'] : '' ?>"
+                       <?= $isRealisasiReadonly ? 'readonly style="background:#f8f9fa;cursor:not-allowed"' : '' ?>>
+              <?php endif; ?>
             </td>
             <td class="text-center">
               <input type="number" name="skor[<?= $kpi['kpi_id'] ?>]" 
                      class="form-control form-control-sm skor-output text-center fw-semibold" 
-                     value="<?= $ex ? $ex['skor'] : '' ?>" 
+                     value="<?= $ex ? number_format((float)$ex['skor'], 2, '.', '') : '' ?>" 
                      readonly style="background:#f8f9fa; font-size:12px;">
             </td>
             <td class="text-center">
               <input type="number" name="nilai_kontribusi[<?= $kpi['kpi_id'] ?>]" 
                      class="form-control form-control-sm kontribusi-output text-center fw-bold" 
-                     value="<?= $ex ? $ex['nilai_kontribusi'] : '' ?>" 
+                     value="<?= $ex ? number_format((float)$ex['nilai_kontribusi'], 2, '.', '') : '' ?>" 
                      readonly style="background:#eec; font-size:12px; color:#1F4E79;">
             </td>
             <td>
+              <?php if (!$punyaTurunan): ?>
               <input type="text" name="catatan[<?= $kpi['kpi_id'] ?>]" 
                      class="form-control form-control-sm" 
                      value="<?= esc($ex['catatan'] ?? '') ?>" placeholder="Opsional"
-                     <?= (($current === 'submitted' || $current === 'approved') && !$isAdmin) ? 'disabled' : '' ?>>
+                     <?= $isRealisasiReadonly ? 'disabled' : '' ?>>
+              <?php else: ?>
+              <span class="text-muted" style="font-size:11px">Lihat per Parameter Turunan</span>
+              <?php endif; ?>
             </td>
           </tr>
+
+          <?php if ($punyaTurunan): ?>
+          <!-- Sub-baris: input Realisasi per Parameter Turunan, ditampilkan
+               nested tepat di bawah baris Induknya pada tabel yang sama. -->
+          <?php foreach ($listTurunan as $t): ?>
+          <?php $exT = $realisasiTurunanExisting[$t['id']] ?? null; ?>
+          <tr class="turunan-row" style="background:#FAFBFC" data-parent-induk="<?= $kpi['kpi_id'] ?>">
+            <td></td>
+            <td colspan="2" style="padding-left:32px">
+              <i class="ti ti-corner-down-right me-1" style="color:#aaa"></i>
+              <span style="font-size:12px"><?= esc($t['nama_turunan']) ?></span>
+              <small class="text-muted d-block" style="font-size:10px;margin-left:18px">
+                Bobot: <?= round((float)$t['bobot']*100, 2) ?>%
+              </small>
+            </td>
+            <td class="text-center text-muted" style="font-size:12px">
+              <?= number_format((float)$t['target'], 2) ?>
+            </td>
+            <td class="text-center">
+              <input type="number"
+                     name="realisasi_turunan[<?= $kpi['id'] ?>][<?= $t['id'] ?>]"
+                     class="form-control form-control-sm realisasi-turunan-input"
+                     data-induk-kpi="<?= $kpi['kpi_id'] ?>"
+                     value="<?= $exT ? $exT['realisasi'] : '' ?>"
+                     <?= $isRealisasiReadonly ? 'readonly style="background:#f0f0f0;cursor:not-allowed"' : '' ?>>
+            </td>
+            <td colspan="2"></td>
+            <td>
+              <input type="text"
+                     name="catatan_turunan[<?= $kpi['id'] ?>][<?= $t['id'] ?>]"
+                     class="form-control form-control-sm"
+                     value="<?= esc($exT['catatan'] ?? '') ?>" placeholder="Opsional"
+                     <?= $isRealisasiReadonly ? 'disabled' : '' ?>>
+            </td>
+          </tr>
+          <?php endforeach; ?>
+          <?php endif; ?>
           <?php endforeach; ?>
         </tbody>
       </table>
@@ -310,7 +383,11 @@ $isAdmin = (session()->get('role') === 'admin'); // Shortcut flag penentu Admin
   <?php endforeach; ?>
 
   <div class="d-flex gap-2 mt-2 mb-4">
-    <?php if ($current !== 'approved'): ?>
+    <?php
+    $canShowSaveButton = ($current !== 'approved')
+        && !($role === 'approver' && $current !== 'submitted');
+    ?>
+    <?php if ($canShowSaveButton): ?>
         <button type="submit" class="btn btn-primary px-4">
           <i class="ti ti-device-floppy me-1"></i> Simpan Semua Penilaian
         </button>
@@ -374,6 +451,15 @@ $isAdmin = (session()->get('role') === 'admin'); // Shortcut flag penentu Admin
 </form>
 
 <script>
+// Token CSRF disimpan sebagai variabel yang dapat diperbarui, bukan
+// nilai statis — karena Config\Security::$regenerate = true membuat
+// token berubah setelah setiap verifikasi berhasil. Tanpa pembaruan
+// ini, permintaan AJAX kedua dan seterusnya (preview Skor/Kontribusi
+// saat mengetik Realisasi) akan ditolak server dengan error 403
+// begitu filter CSRF global diaktifkan.
+let csrfTokenName  = '<?= csrf_token() ?>';
+let csrfHashValue  = '<?= csrf_hash() ?>';
+
 document.addEventListener('DOMContentLoaded', function() {
     const rows = document.querySelectorAll('.kpi-row');
 
@@ -392,17 +478,20 @@ document.addEventListener('DOMContentLoaded', function() {
             if (realisasi === '') return;
 
             let params = new URLSearchParams();
-            params.append('<?= csrf_token() ?>', '<?= csrf_hash() ?>');
+            params.append(csrfTokenName, csrfHashValue);
             params.append('kpi_id', kpiId);
             params.append('pegawai_id', pegawaiId);
             params.append('realisasi', realisasi);
 
             fetch("<?= site_url('penilaian/ajaxHitung') ?>", {
                 method: "POST",
+                headers: { 'X-Requested-With': 'XMLHttpRequest' },
                 body: params
             })
             .then(response => response.json())
             .then(data => {
+                if (data.csrf_hash) csrfHashValue = data.csrf_hash;
+
                 if (data.valid) {
                     // Paksa format 2 digit di belakang titik menggunakan toFixed(2)
                     outputSkor.value = parseFloat(data.skor).toFixed(2);
@@ -411,5 +500,67 @@ document.addEventListener('DOMContentLoaded', function() {
             });
         });
     });
+
+    // ── Penanganan input Realisasi pada Parameter Turunan ──────────
+    // Setiap kali salah satu input Turunan berubah, hitung ulang SUM
+    // seluruh Turunan milik Induk yang sama, tampilkan SUM tersebut
+    // pada kolom Realisasi Induk (readonly), lalu panggil ulang
+    // ajaxHitung() menggunakan SUM tersebut sebagai nilai realisasi —
+    // memakai endpoint dan logika kalkulasi Skor yang sama persis
+    // dengan KPI tanpa Parameter Turunan, tanpa duplikasi logika.
+    document.querySelectorAll('.realisasi-turunan-input').forEach(function (input) {
+        input.addEventListener('input', function () {
+            const indukKpiId = this.getAttribute('data-induk-kpi');
+            hitungUlangRealisasiInduk(indukKpiId);
+        });
+    });
+
+    function hitungUlangRealisasiInduk(indukKpiId) {
+        const indukRow = document.querySelector('.kpi-row[data-kpi="' + indukKpiId + '"]');
+        if (!indukRow) return;
+
+        let sum = 0;
+        let adaTerisi = false;
+        document.querySelectorAll('.realisasi-turunan-input[data-induk-kpi="' + indukKpiId + '"]')
+            .forEach(function (el) {
+                const val = parseFloat(el.value);
+                if (!isNaN(val) && val !== 0) {
+                    sum += val;
+                    adaTerisi = true;
+                }
+            });
+
+        const realisasiIndukField = document.getElementById('realisasi_induk_' + indukKpiId);
+        if (realisasiIndukField) {
+            realisasiIndukField.value = adaTerisi ? sum : '';
+        }
+
+        if (!adaTerisi) return;
+
+        const outputSkor    = indukRow.querySelector('.skor-output');
+        const outputKontrib = indukRow.querySelector('.kontribusi-output');
+        const pegawaiId     = "<?= $pegawai['id'] ?>";
+
+        let params = new URLSearchParams();
+        params.append(csrfTokenName, csrfHashValue);
+        params.append('kpi_id', indukKpiId);
+        params.append('pegawai_id', pegawaiId);
+        params.append('realisasi', sum);
+
+        fetch("<?= site_url('penilaian/ajaxHitung') ?>", {
+            method: "POST",
+            headers: { 'X-Requested-With': 'XMLHttpRequest' },
+            body: params
+        })
+        .then(function (response) { return response.json(); })
+        .then(function (data) {
+            if (data.csrf_hash) csrfHashValue = data.csrf_hash;
+
+            if (data.valid) {
+                outputSkor.value    = parseFloat(data.skor).toFixed(2);
+                outputKontrib.value = parseFloat(data.kontribusi).toFixed(2);
+            }
+        });
+    }
 });
 </script>

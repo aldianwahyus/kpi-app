@@ -10,6 +10,19 @@ class MasterController extends BaseController
     public function __construct()
     {
         $this->kpiModel = new KpiMasterModel();
+
+        // Seluruh operasi Master Data (KPI, Direktorat, Unit Kerja, Periode,
+        // KPI Divisi, KPI Unit) hanya boleh diakses oleh Administrator.
+        // Pengecekan dilakukan di konstruktor karena SEMUA method di
+        // controller ini berbagi persyaratan akses yang sama persis.
+        $role = session()->get('role');
+        if ($role !== 'admin' && $role !== 'hr') {
+            // Tidak bisa memanggil $this->forbidden() sebelum DI siap,
+            // gunakan session flash + redirect langsung.
+            session()->setFlashdata('error', 'Anda tidak memiliki akses ke halaman Master Data.');
+            header('Location: ' . base_url('dashboard'));
+            exit;
+        }
     }
 
     // ── Daftar KPI ──────────────────────────────────────────
@@ -282,6 +295,12 @@ class MasterController extends BaseController
     {
         $kpiDivisiModel = new \App\Models\KpiDivisiModel();
         $row = $kpiDivisiModel->find($id);
+
+        if (!$row) {
+            return redirect()->to(base_url('master/kpi-divisi'))
+                            ->with('error', 'Data KPI Divisi tidak ditemukan atau sudah dihapus.');
+        }
+
         $kpiDivisiModel->delete($id);
 
         return redirect()->to(base_url("master/kpi-divisi/edit/{$row['divisi_id']}"))
@@ -293,6 +312,11 @@ class MasterController extends BaseController
         $kpiDivisiModel = new \App\Models\KpiDivisiModel();
 
         $kpiId = (int)$this->request->getPost('kpi_id');
+
+        if ($kpiId <= 0) {
+            return redirect()->back()
+                            ->with('error', 'KPI yang dipilih tidak valid.');
+        }
 
         if ($kpiDivisiModel->isAssigned($divisiId, $kpiId)) {
             return redirect()->back()
@@ -374,6 +398,11 @@ class MasterController extends BaseController
         $m   = new \App\Models\DirektoratModel();
         $dir = $m->find($id);
 
+        if (!$dir) {
+            return redirect()->to(base_url('master/direktorat'))
+                            ->with('error', 'Direktorat tidak ditemukan.');
+        }
+
         return view('layouts/main', [
             'title'   => 'Edit Direktorat',
             'content' => view('master/direktorat/_form', [
@@ -404,6 +433,12 @@ class MasterController extends BaseController
         $kpiUnitModel    = new \App\Models\KpiUnitModel();
 
         $direktorat = $direktoratModel->find($direktoratId);
+
+        if (!$direktorat) {
+            return redirect()->to(base_url('master/direktorat'))
+                            ->with('error', 'Direktorat tidak ditemukan.');
+        }
+
         $grouped    = $kpiUnitModel->getGroupedPerspektif($direktoratId);
         // $totalBobot = $kpiUnitModel->getTotalBobot($direktoratId);
 
@@ -420,44 +455,147 @@ class MasterController extends BaseController
     public function kpiUnitCreate(int $direktoratId): string
     {
         $direktoratModel = new \App\Models\DirektoratModel();
+        $direktorat      = $direktoratModel->find($direktoratId);
+
+        if (!$direktorat) {
+            return redirect()->to(base_url('master/direktorat'))
+                            ->with('error', 'Direktorat tidak ditemukan.');
+        }
+
         return view('layouts/main', [
             'title'   => 'Tambah KPI Unit',
             'content' => view('master/kpi_unit/_form', [
-                'direktorat' => $direktoratModel->find($direktoratId),
+                'direktorat' => $direktorat,
                 'kpi'        => null,
                 'action'     => base_url("master/kpi-unit/{$direktoratId}/store"),
             ]),
         ]);
     }
 
+    // ── AJAX: Generate kode KPI otomatis ─────────────────────
+    // Format: [SINGKATAN_DIR]-[PREFIX_PERSPEKTIF][NOMOR_URUT]
+    // Contoh: MR-F1, MR-IP3, DU-LG2
+    public function kpiUnitGenerateKode()
+    {
+        $direktoratId = (int)$this->request->getGet('direktorat_id');
+        $perspektif   = $this->request->getGet('perspektif');
+
+        if (!$direktoratId || !$perspektif) {
+            return $this->response->setJSON(['kode' => '', 'error' => 'Parameter tidak lengkap.']);
+        }
+
+        $direktoratModel = new \App\Models\DirektoratModel();
+        $kpiUnitModel    = new \App\Models\KpiUnitModel();
+
+        $direktorat = $direktoratModel->find($direktoratId);
+        if (!$direktorat) {
+            return $this->response->setJSON(['kode' => '', 'error' => 'Direktorat tidak ditemukan.']);
+        }
+
+        // Singkatan direktorat — ambil dari kolom singkatan, fallback ke
+        // kode direktorat jika singkatan kosong atau masih format panjang
+        $singkatan = strtoupper(trim($direktorat['singkatan'] ?? ''));
+        if (empty($singkatan) || strlen($singkatan) > 8) {
+            // Fallback: derive dari nama direktorat (ambil huruf pertama tiap kata)
+            $words = explode(' ', preg_replace('/\b(dan|dan|the|of|dan|&)\b/i', '', $direktorat['nama']));
+            $singkatan = strtoupper(implode('', array_map(fn($w) => substr(trim($w), 0, 1), array_filter($words))));
+            $singkatan = substr($singkatan, 0, 4);
+        }
+
+        // Peta perspektif ke prefix huruf
+        $prefixMap = [
+            'Financial'         => 'F',
+            'Customer'          => 'C',
+            'Internal Process'  => 'IP',
+            'Learning & Growth' => 'LG',
+        ];
+        $prefix = $prefixMap[$perspektif] ?? strtoupper(substr($perspektif, 0, 2));
+
+        // Temukan nomor urut berikutnya yang belum pernah dipakai
+        // untuk kombinasi singkatan + perspektif ini
+        $pattern = $singkatan . '-' . $prefix;
+        $existing = $kpiUnitModel->db->table('kpi_unit')
+            ->select('kode')
+            ->like('kode', $pattern, 'after')
+            ->where('direktorat_id', $direktoratId)
+            ->get()->getResultArray();
+
+        $usedNumbers = [];
+        foreach ($existing as $row) {
+            if (preg_match('/^' . preg_quote($pattern, '/') . '(\d+)$/', $row['kode'], $m)) {
+                $usedNumbers[] = (int)$m[1];
+            }
+        }
+
+        $nextNum = 1;
+        while (in_array($nextNum, $usedNumbers)) {
+            $nextNum++;
+        }
+
+        $kode = $pattern . $nextNum;
+
+        return $this->response->setJSON([
+            'kode'     => $kode,
+            'preview'  => "Kode yang akan digunakan: <strong>$kode</strong>",
+            'csrf_hash'=> csrf_hash(),
+        ]);
+    }
+
     public function kpiUnitStore(int $direktoratId)
     {
-        // ← Hapus echo "test"
         if (!$this->validate([
             'nama_kpi'   => 'required',
-            'kode'       => 'required',
             'perspektif' => 'required',
             'satuan'     => 'required',
-            // ← Hapus validasi bobot
         ])) {
             return redirect()->back()->withInput()
                             ->with('errors', $this->validator->getErrors());
         }
 
-        $m = new \App\Models\KpiUnitModel();
+        $m           = new \App\Models\KpiUnitModel();
+        $perspektif  = $this->request->getPost('perspektif');
+        $kodeForm    = strtoupper(trim($this->request->getPost('kode') ?? ''));
 
-        // Cek kode duplikat
-        $kode = strtoupper($this->request->getPost('kode'));
-        if ($m->where('kode', $kode)->countAllResults() > 0) {
+        // Jika kode dari form kosong atau tidak valid (JS dimatikan),
+        // generate ulang di sisi server menggunakan logika yang sama
+        // dengan kpiUnitGenerateKode() untuk konsistensi.
+        if (empty($kodeForm)) {
+            $direktoratModel = new \App\Models\DirektoratModel();
+            $direktorat      = $direktoratModel->find($direktoratId);
+            $singkatan       = strtoupper(trim($direktorat['singkatan'] ?? ''));
+            if (empty($singkatan) || strlen($singkatan) > 8) {
+                $words     = explode(' ', $direktorat['nama']);
+                $singkatan = strtoupper(implode('', array_map(fn($w) => substr(trim($w), 0, 1), array_filter($words))));
+                $singkatan = substr($singkatan, 0, 4);
+            }
+            $prefixMap  = ['Financial'=>'F','Customer'=>'C','Internal Process'=>'IP','Learning & Growth'=>'LG'];
+            $prefix     = $prefixMap[$perspektif] ?? strtoupper(substr($perspektif, 0, 2));
+            $pattern    = $singkatan . '-' . $prefix;
+            $existing   = $m->db->table('kpi_unit')->select('kode')
+                            ->like('kode', $pattern, 'after')
+                            ->where('direktorat_id', $direktoratId)->get()->getResultArray();
+            $usedNumbers = [];
+            foreach ($existing as $row) {
+                if (preg_match('/^' . preg_quote($pattern, '/') . '(\d+)$/', $row['kode'], $mx)) {
+                    $usedNumbers[] = (int)$mx[1];
+                }
+            }
+            $nextNum = 1;
+            while (in_array($nextNum, $usedNumbers)) $nextNum++;
+            $kodeForm = $pattern . $nextNum;
+        }
+
+        // Cek kode duplikat (keamanan: validasi tetap di server)
+        if ($m->where('kode', $kodeForm)->countAllResults() > 0) {
             return redirect()->back()->withInput()
-                            ->with('error', "Kode '$kode' sudah digunakan.");
+                            ->with('error', "Kode '$kodeForm' sudah digunakan. Silakan muat ulang form untuk mendapatkan kode baru.");
         }
 
         $m->insert([
             'direktorat_id'      => $direktoratId,
-            'perspektif'         => $this->request->getPost('perspektif'),
+            'perspektif'         => $perspektif,
             'nama_kpi'           => $this->request->getPost('nama_kpi'),
-            'kode'               => $kode,
+            'kode'               => $kodeForm,
             'satuan'             => $this->request->getPost('satuan'),
             'bobot'              => 0,
             'polarity'           => $this->request->getPost('polarity') ?? 'max',
@@ -474,6 +612,12 @@ class MasterController extends BaseController
     {
         $m   = new \App\Models\KpiUnitModel();
         $kpi = $m->find($id);
+
+        if (!$kpi) {
+            return redirect()->to(base_url('master/direktorat'))
+                            ->with('error', 'KPI Unit tidak ditemukan.');
+        }
+
         $direktoratModel = new \App\Models\DirektoratModel();
 
         return view('layouts/main', [
@@ -490,6 +634,11 @@ class MasterController extends BaseController
     {
         $m   = new \App\Models\KpiUnitModel();
         $kpi = $m->find($id);
+
+        if (!$kpi) {
+            return redirect()->to(base_url('master/direktorat'))
+                            ->with('error', 'KPI Unit tidak ditemukan.');
+        }
 
         $m->update($id, [
             'perspektif'         => $this->request->getPost('perspektif'),
@@ -510,10 +659,202 @@ class MasterController extends BaseController
     {
         $m   = new \App\Models\KpiUnitModel();
         $kpi = $m->find($id);
+
+        if (!$kpi) {
+            return redirect()->to(base_url('master/direktorat'))
+                            ->with('error', 'KPI Unit tidak ditemukan atau sudah dihapus.');
+        }
+
         $m->delete($id);
 
         return redirect()->to(base_url("master/kpi-unit/{$kpi['direktorat_id']}"))
                         ->with('success', 'KPI Unit berhasil dihapus.');
+    }
+
+    // ── Tampilkan form Import KPI Unit ────────────────────────
+    public function kpiUnitImportForm(int $direktoratId): string
+    {
+        $direktoratModel = new \App\Models\DirektoratModel();
+        $direktorat      = $direktoratModel->find($direktoratId);
+        if (!$direktorat) {
+            return redirect()->to(base_url('master/direktorat'))->with('error', 'Direktorat tidak ditemukan.');
+        }
+
+        return view('layouts/main', [
+            'title'   => 'Import KPI Unit',
+            'content' => view('master/kpi_unit/_import', ['direktorat' => $direktorat]),
+        ]);
+    }
+
+    // ── Download template import KPI Unit ─────────────────────
+    public function kpiUnitImportTemplate(int $direktoratId)
+    {
+        $direktoratModel = new \App\Models\DirektoratModel();
+        $direktorat      = $direktoratModel->find($direktoratId);
+        if (!$direktorat) {
+            return redirect()->to(base_url('master/direktorat'))->with('error', 'Direktorat tidak ditemukan.');
+        }
+
+        $spreadsheet = new \PhpOffice\PhpSpreadsheet\Spreadsheet();
+        $sheet       = $spreadsheet->getActiveSheet();
+        $sheet->setTitle('Template Import KPI Unit');
+
+        $headers = [
+            'A' => 'Perspektif *',
+            'B' => 'Nama KPI *',
+            'C' => 'Satuan *',
+            'D' => 'Polarity (max/min) *',
+            'E' => 'Perubahan Polarity (pos/neg) *',
+            'F' => 'Urutan',
+        ];
+        foreach ($headers as $col => $h) {
+            $sheet->setCellValue("{$col}1", $h);
+            $sheet->getColumnDimension($col)->setAutoSize(true);
+            $sheet->getStyle("{$col}1")->getFont()->setBold(true);
+        }
+
+        // Baris contoh
+        $contoh = [
+            ['Financial', 'Rasio Laba Bersih', '%', 'max', 'pos', 1],
+            ['Customer', 'Tingkat Kepuasan Nasabah', 'Skor', 'max', 'pos', 2],
+            ['Internal Process', 'Penyelesaian SLA', '%', 'max', 'pos', 3],
+            ['Learning & Growth', 'Jam Pelatihan Pegawai', 'Jam', 'max', 'pos', 4],
+        ];
+        foreach ($contoh as $i => $row) {
+            foreach ($row as $j => $val) {
+                $col = chr(ord('A') + $j);
+                $sheet->setCellValue("{$col}" . ($i + 2), $val);
+            }
+        }
+
+        // Instruksi di kolom H
+        $sheet->setCellValue('H1', 'CATATAN:');
+        $sheet->setCellValue('H2', 'Kode akan digenerate otomatis oleh sistem.');
+        $sheet->setCellValue('H3', 'Perspektif valid: Financial | Customer | Internal Process | Learning & Growth');
+        $sheet->setCellValue('H4', "Untuk direktorat: {$direktorat['nama']}");
+        $sheet->getColumnDimension('H')->setWidth(60);
+
+        $writer   = new \PhpOffice\PhpSpreadsheet\Writer\Xlsx($spreadsheet);
+        $filename = 'Template_Import_KPI_Unit_' . preg_replace('/[^a-zA-Z0-9]/', '_', $direktorat['kode']) . '.xlsx';
+
+        header('Content-Type: application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
+        header("Content-Disposition: attachment; filename=\"$filename\"");
+        header('Cache-Control: max-age=0');
+        $writer->save('php://output');
+        exit;
+    }
+
+    // ── Proses Import KPI Unit dari Excel ─────────────────────
+    public function kpiUnitImportProcess(int $direktoratId)
+    {
+        $direktoratModel = new \App\Models\DirektoratModel();
+        $direktorat      = $direktoratModel->find($direktoratId);
+        if (!$direktorat) {
+            return redirect()->to(base_url('master/direktorat'))->with('error', 'Direktorat tidak ditemukan.');
+        }
+
+        $file = $this->request->getFile('file_excel');
+        if (!$file || !$file->isValid() || $file->hasMoved()) {
+            return redirect()->back()->with('error', 'File tidak valid. Harap unggah file Excel (.xlsx).');
+        }
+
+        $ext = strtolower($file->getClientExtension());
+        if (!in_array($ext, ['xlsx', 'xls'])) {
+            return redirect()->back()->with('error', 'Format file harus .xlsx atau .xls.');
+        }
+
+        try {
+            $reader      = \PhpOffice\PhpSpreadsheet\IOFactory::createReaderForFile($file->getTempName());
+            $spreadsheet = $reader->load($file->getTempName());
+            $rows        = $spreadsheet->getActiveSheet()->toArray(null, true, true, true);
+        } catch (\Exception $e) {
+            return redirect()->back()->with('error', 'Gagal membaca file: ' . $e->getMessage());
+        }
+
+        $perspektifValid = ['Financial', 'Customer', 'Internal Process', 'Learning & Growth'];
+        $prefixMap       = ['Financial'=>'F','Customer'=>'C','Internal Process'=>'IP','Learning & Growth'=>'LG'];
+
+        $singkatan = strtoupper(trim($direktorat['singkatan'] ?? ''));
+        if (empty($singkatan) || strlen($singkatan) > 8) {
+            $words     = explode(' ', $direktorat['nama']);
+            $singkatan = strtoupper(implode('', array_map(fn($w) => substr(trim($w), 0, 1), array_filter($words))));
+            $singkatan = substr($singkatan, 0, 4);
+        }
+
+        $m         = new \App\Models\KpiUnitModel();
+        $berhasil  = 0;
+        $dilewati  = [];
+
+        foreach ($rows as $i => $row) {
+            if ($i === 1) continue; // header
+            if (empty(trim($row['A'] ?? '')) && empty(trim($row['B'] ?? ''))) continue; // baris kosong
+
+            $perspektif = trim($row['A'] ?? '');
+            $namaKpi    = trim($row['B'] ?? '');
+            $satuan     = trim($row['C'] ?? '');
+            $polarity   = strtolower(trim($row['D'] ?? 'max'));
+            $perubahan  = strtolower(trim($row['E'] ?? 'pos'));
+            $urutan     = (int)($row['F'] ?? 99) ?: 99;
+
+            // Validasi baris
+            if (!in_array($perspektif, $perspektifValid)) {
+                $dilewati[] = "Baris $i: Perspektif '$perspektif' tidak valid.";
+                continue;
+            }
+            if (empty($namaKpi)) {
+                $dilewati[] = "Baris $i: Nama KPI wajib diisi.";
+                continue;
+            }
+            if (empty($satuan)) {
+                $dilewati[] = "Baris $i: Satuan wajib diisi.";
+                continue;
+            }
+            if (!in_array($polarity, ['max', 'min'])) {
+                $dilewati[] = "Baris $i: Polarity harus 'max' atau 'min'.";
+                continue;
+            }
+            if (!in_array($perubahan, ['pos', 'neg'])) {
+                $dilewati[] = "Baris $i: Perubahan Polarity harus 'pos' atau 'neg'.";
+                continue;
+            }
+
+            // Generate kode otomatis
+            $prefix   = $prefixMap[$perspektif];
+            $pattern  = $singkatan . '-' . $prefix;
+            $existing = $m->db->table('kpi_unit')->select('kode')
+                            ->like('kode', $pattern, 'after')
+                            ->where('direktorat_id', $direktoratId)->get()->getResultArray();
+            $usedNumbers = [];
+            foreach ($existing as $r2) {
+                if (preg_match('/^' . preg_quote($pattern, '/') . '(\d+)$/', $r2['kode'], $mx)) {
+                    $usedNumbers[] = (int)$mx[1];
+                }
+            }
+            $nextNum = 1;
+            while (in_array($nextNum, $usedNumbers)) $nextNum++;
+            $kode = $pattern . $nextNum;
+
+            $m->insert([
+                'direktorat_id'      => $direktoratId,
+                'perspektif'         => $perspektif,
+                'nama_kpi'           => $namaKpi,
+                'kode'               => $kode,
+                'satuan'             => $satuan,
+                'bobot'              => 0,
+                'polarity'           => $polarity,
+                'perubahan_polarity' => $perubahan,
+                'urutan'             => $urutan,
+                'is_active'          => 1,
+            ]);
+            $berhasil++;
+        }
+
+        $pesan = "$berhasil KPI Unit berhasil diimpor ke direktorat {$direktorat['nama']}.";
+        if (!empty($dilewati)) {
+            $pesan .= ' ' . count($dilewati) . ' baris dilewati: ' . implode('; ', array_slice($dilewati, 0, 5));
+        }
+
+        return redirect()->to(base_url("master/kpi-unit/$direktoratId"))->with('success', $pesan);
     }
 
     // ══ DATA UNIT KERJA ══════════════════════════════════════
@@ -572,12 +913,19 @@ class MasterController extends BaseController
     public function unitKerjaEdit(int $id): string
     {
         $m = new \App\Models\DivisiModel();
+        $divisi = $m->find($id);
+
+        if (!$divisi) {
+            return redirect()->to(base_url('master/unit-kerja'))
+                            ->with('error', 'Unit kerja tidak ditemukan.');
+        }
+
         $direktoratModel = new \App\Models\DirektoratModel();
 
         return view('layouts/main', [
             'title'   => 'Edit Unit Kerja',
             'content' => view('master/unit_kerja/_form', [
-                'divisi'      => $m->find($id),
+                'divisi'      => $divisi,
                 'action'      => base_url("master/unit-kerja/update/$id"),
                 'direktorats' => $direktoratModel->getDropdown(),
             ]),
@@ -603,6 +951,12 @@ class MasterController extends BaseController
     {
         $m = new \App\Models\DivisiModel();
         $d = $m->find($id);
+
+        if (!$d) {
+            return redirect()->to(base_url('master/unit-kerja'))
+                            ->with('error', 'Unit kerja tidak ditemukan.');
+        }
+
         $m->update($id, ['is_active' => $d['is_active'] ? 0 : 1]);
 
         return redirect()->to(base_url('master/unit-kerja'))
@@ -612,6 +966,31 @@ class MasterController extends BaseController
     public function unitKerjaDelete(int $id)
     {
         $m = new \App\Models\DivisiModel();
+
+        $pegawaiCount = (new \App\Models\PegawaiModel())
+            ->where('divisi_id', $id)
+            ->countAllResults();
+
+        if ($pegawaiCount > 0) {
+            return redirect()->to(base_url('master/unit-kerja'))
+                            ->with('error',
+                                "Unit kerja tidak bisa dihapus karena masih memiliki "
+                                . "<strong>$pegawaiCount pegawai</strong>. "
+                                . "Pindahkan pegawai ke unit kerja lain terlebih dahulu.");
+        }
+
+        $kpiDivisiCount = (new \App\Models\KpiDivisiModel())
+            ->where('divisi_id', $id)
+            ->countAllResults();
+
+        if ($kpiDivisiCount > 0) {
+            return redirect()->to(base_url('master/unit-kerja'))
+                            ->with('error',
+                                "Unit kerja tidak bisa dihapus karena masih memiliki "
+                                . "<strong>$kpiDivisiCount KPI</strong> yang ditetapkan. "
+                                . "Hapus assignment KPI Divisi terlebih dahulu.");
+        }
+
         $m->delete($id);
 
         return redirect()->to(base_url('master/unit-kerja'))

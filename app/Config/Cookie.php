@@ -48,13 +48,27 @@ class Cookie extends BaseConfig
     public string $domain = '';
 
     /**
-     * --------------------------------------------------------------------------
+     * --------------------------------------------------------------------
      * Cookie Secure
-     * --------------------------------------------------------------------------
-     *
+     * --------------------------------------------------------------------
      * Cookie will only be set if a secure HTTPS connection exists.
+     *
+     * Nilai ini diturunkan secara otomatis dari skema app.baseURL, bukan
+     * di-hardcode — supaya selalu konsisten dengan environment yang
+     * sedang berjalan tanpa perlu diubah manual setiap kali berpindah
+     * antara development (http://localhost) dan production (https://).
+     * Hardcoding nilai true sebelumnya menyebabkan fatal error
+     * "Attempted to send a secure cookie over a non-secure connection"
+     * saat aplikasi diakses lewat HTTP (mis. saat testing di XAMPP).
      */
-    public bool $secure = false;
+    public bool $secure;
+
+    public function __construct()
+    {
+        parent::__construct();
+        $baseUrl = env('app.baseURL') ?? '';
+        $this->secure = str_starts_with((string) $baseUrl, 'https://');
+    }
 
     /**
      * --------------------------------------------------------------------------
