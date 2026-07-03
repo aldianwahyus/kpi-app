@@ -140,6 +140,7 @@ class PegawaiController extends BaseController
         // Buat akun user otomatis jika email diisi
         if ($email) {
             $passwordInput = $this->request->getPost('password');
+            $role = $this->request->getPost('role');
             $this->userModel->insert([
                 'pegawai_id' => $pegawaiId,
                 'nama'       => $nama,
@@ -153,7 +154,8 @@ class PegawaiController extends BaseController
                 // password tersebut mudah ditebak dan tercantum terbuka
                 // pada template import Excel.
                 'must_change_password' => $passwordInput ? 0 : 1,
-                'role'       => $this->request->getPost('role') ?? 'pegawai',
+                'role'       => in_array($role, ['admin', 'hr', 'drafter', 'approver', 'pegawai'], true)
+                                ? $role : 'pegawai',
                 'is_active'  => 1,
             ]);
         }
@@ -239,8 +241,11 @@ class PegawaiController extends BaseController
         ]);
 
         if ($email) {
+            $role = $this->request->getPost('role');
+            $role = in_array($role, ['admin', 'hr', 'drafter', 'approver', 'pegawai'], true)
+                    ? $role : 'pegawai';
             if ($existingUser) {
-                $updateData = ['email' => $email, 'role' => $this->request->getPost('role')];
+                $updateData = ['email' => $email, 'role' => $role];
                 if ($pwd = trim($this->request->getPost('password'))) {
                     // Password apa pun yang ditentukan Admin (baik custom
                     // maupun default) tetap mewajibkan pengguna menggantinya
@@ -258,7 +263,7 @@ class PegawaiController extends BaseController
                     'email'      => $email,
                     'password'   => password_hash($this->request->getPost('password') ?: 'pegawai123', PASSWORD_DEFAULT),
                     'must_change_password' => 1,
-                    'role'       => $this->request->getPost('role') ?? 'pegawai',
+                    'role'       => $role,
                     'is_active'  => 1,
                 ]);
             }

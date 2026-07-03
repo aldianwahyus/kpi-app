@@ -201,10 +201,15 @@ let csrfHashValue = '<?= csrf_hash() ?>';
 
 document.querySelectorAll('.kpi-unit-input').forEach(input => {
     input.addEventListener('input', function() {
-        const kpiId     = this.dataset.kpi;
-        const target    = document.getElementById('target_'+kpiId)?.value    || 0;
-        const realisasi = document.getElementById('realisasi_'+kpiId)?.value || 0;
-        if (target > 0 && realisasi > 0) hitungCapaian(kpiId, target, realisasi);
+        const kpiId        = this.dataset.kpi;
+        const targetRaw    = document.getElementById('target_'+kpiId)?.value    ?? '';
+        const realisasiRaw = document.getElementById('realisasi_'+kpiId)?.value ?? '';
+        // Realisasi = 0 yang sengaja diisi tetap valid (KPI 'min' bisa
+        // memiliki capaian terbaik di angka 0) — hanya field yang benar-benar
+        // kosong yang tidak memicu preview.
+        if (targetRaw !== '' && Number(targetRaw) > 0 && realisasiRaw !== '') {
+            hitungCapaian(kpiId, targetRaw, realisasiRaw);
+        }
     });
 });
 

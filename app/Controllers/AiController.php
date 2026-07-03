@@ -139,7 +139,18 @@ class AiController extends BaseController
         $periodeAktif = $this->periodeModel->getAktif();
         if (!$periodeAktif) return [];
 
-        $rekap = $this->penilaianModel->getRekapKombinasi($periodeAktif['id']) ?? [];
+        // Drafter & Approver HANYA boleh melihat rekap untuk divisinya sendiri —
+        // scope WAJIB ini diterapkan sama seperti RekapController/LaporanController,
+        // agar konteks yang dikirim ke AI tidak pernah berisi data divisi lain.
+        $divisiScope = null;
+        $role        = session()->get('role');
+        $myPegawaiId = session()->get('pegawai_id');
+        if (in_array($role, ['drafter', 'approver']) && $myPegawaiId) {
+            $myPegawai   = $this->pegawaiModel->find($myPegawaiId);
+            $divisiScope = $myPegawai['divisi_id'] ?? null;
+        }
+
+        $rekap = $this->penilaianModel->getRekapKombinasi($periodeAktif['id'], $divisiScope) ?? [];
 
         // Proteksi jika rekap data kosong agar tidak terjadi division by zero
         $totalPegawai = count($rekap);

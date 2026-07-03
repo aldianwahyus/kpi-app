@@ -15,20 +15,22 @@ class KpiCalculationService
     ): float {
         if ($target == 0) return 10;
 
-        // Realisasi 0 selalu dianggap "belum diisi", bukan capaian sempurna —
-        // berlaku untuk seluruh polarity. Sebelumnya, untuk polarity 'min',
-        // realisasi 0 secara keliru menghasilkan rasio=1 (skor 100), yang
-        // menyebabkan rata-rata capaian tampil tinggi meski belum ada
-        // penilaian nyata yang diinput. Pemanggil (PenilaianController::store
-        // dan ajaxHitung) seharusnya sudah menyaring nilai ini lebih dulu;
-        // baris ini adalah pertahanan tambahan agar fungsi ini sendiri tidak
-        // pernah memunculkan skor tinggi dari realisasi kosong/nol.
-        if ($realisasi == 0) return 10;
-
+        // Pemanggil (PenilaianController::store, ajaxHitung, ajaxHitungTurunan)
+        // bertanggung jawab membedakan "belum diisi" (null/string kosong) dari
+        // "realisasi = 0 yang genuinely valid" SEBELUM memanggil fungsi ini —
+        // fungsi ini hanya menerima nilai yang memang sudah dipastikan terisi.
         if ($polarity === 'max') {
+            // realisasi 0 di sini berarti capaian 0 (belum ada progres nyata),
+            // hasil akhir dibatasi ke skor lantai (10) oleh clamp di bawah.
             $rasio = $realisasi / $target;
         } else {
-            // minimize: realisasi lebih kecil = lebih baik
+            // minimize: realisasi lebih kecil = lebih baik. Realisasi 0 adalah
+            // capaian TERBAIK yang mungkin (mis. 0 kasus fraud/komplain) —
+            // secara matematis itu rasio tak terhingga, jadi langsung
+            // dikembalikan sebagai skor maksimum alih-alih membagi dengan nol.
+            if ($realisasi == 0) {
+                return $isCapped ? 100 : 150;
+            }
             $rasio = $target / $realisasi;
         }
 
@@ -53,11 +55,19 @@ class KpiCalculationService
         string $polarity   = 'max',
         string $perubahan  = 'pos'
     ): float {
-        if ($target == 0 || $realisasi == 0) return 0;
+        if ($target == 0) return 0;
 
-        if ($polarity === 'max' && $perubahan === 'pos') {
+        $isMaxLike = ($polarity === 'max' && $perubahan === 'pos');
+
+        if ($isMaxLike) {
+            // realisasi 0 = belum ada progres nyata untuk KPI 'max' -> capaian 0.
+            if ($realisasi == 0) return 0;
             $capaian = $realisasi / $target;
         } else {
+            // minimize: realisasi 0 adalah capaian TERBAIK yang mungkin
+            // (mis. 0 kasus fraud/komplain) -> dibatasi ke plafon 150%,
+            // bukan dihitung sebagai pembagian dengan nol.
+            if ($realisasi == 0) return 1.5;
             $capaian = $target / $realisasi;
         }
 

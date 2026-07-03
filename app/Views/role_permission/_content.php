@@ -30,7 +30,7 @@
   <?php foreach ($roles as $r): ?>
   <a href="<?= base_url("master/role-permission?role=$r") ?>"
      class="btn btn-sm <?= $r === $selectedRole ? 'btn-primary' : 'btn-light border' ?>">
-    <?= $roleLabels[$r] ?? $r ?>
+    <?= esc($roleLabels[$r] ?? $r) ?>
   </a>
   <?php endforeach; ?>
 </div>

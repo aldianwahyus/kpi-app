@@ -5,7 +5,6 @@
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <meta name="csrf-token" content="<?= csrf_token() ?>">
   <meta name="csrf-hash"  content="<?= csrf_hash() ?>">
-  <title><?= $title ?? 'Aplikasi KPI' ?> — Sistem KPI</title>
 
   <!-- Bootstrap 5 -->
   <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
@@ -17,7 +16,7 @@
 
   <link rel="icon" type="image/png"
         href="<?= base_url('assets/images/logo.png') ?>">
-  <title><?= $title ?? 'Aplikasi KPI' ?> — Bank NTB Syariah</title>
+  <title><?= esc($title ?? 'Aplikasi KPI') ?> — Bank NTB Syariah</title>
 
   <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
 

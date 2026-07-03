@@ -61,7 +61,18 @@ class LaporanController extends BaseController
             return redirect()->back()->with('error', 'Periode tidak ditemukan.');
         }
 
-        $rekap   = $this->penilaianModel->getRekapKombinasi((int)$periodeId);
+        // Drafter & Approver HANYA boleh melihat rekap untuk divisinya sendiri —
+        // scope WAJIB ini diterapkan di level SQL, sama seperti RekapController,
+        // agar export PDF tidak pernah membocorkan data divisi lain.
+        $divisiScope = null;
+        $role        = session()->get('role');
+        $myPegawaiId = session()->get('pegawai_id');
+        if (in_array($role, ['drafter', 'approver']) && $myPegawaiId) {
+            $myPegawai   = $this->pegawaiModel->find($myPegawaiId);
+            $divisiScope = $myPegawai['divisi_id'] ?? null;
+        }
+
+        $rekap   = $this->penilaianModel->getRekapKombinasi((int)$periodeId, $divisiScope);
 
         // ── FIX: Hitung ulang counter distribusi untuk Skema Grade Baru (M, SB, B, C) ──
         $distribusi = [
@@ -183,7 +194,18 @@ class LaporanController extends BaseController
             return redirect()->back()->with('error', 'Periode tidak ditemukan.');
         }
 
-        $rekap   = $this->penilaianModel->getRekapKombinasi((int)$periodeId);
+        // Drafter & Approver HANYA boleh melihat rekap untuk divisinya sendiri —
+        // scope WAJIB ini diterapkan di level SQL, sama seperti RekapController,
+        // agar export Excel tidak pernah membocorkan data divisi lain.
+        $divisiScope = null;
+        $role        = session()->get('role');
+        $myPegawaiId = session()->get('pegawai_id');
+        if (in_array($role, ['drafter', 'approver']) && $myPegawaiId) {
+            $myPegawai   = $this->pegawaiModel->find($myPegawaiId);
+            $divisiScope = $myPegawai['divisi_id'] ?? null;
+        }
+
+        $rekap   = $this->penilaianModel->getRekapKombinasi((int)$periodeId, $divisiScope);
 
         $spreadsheet = new Spreadsheet();
         $sheet       = $spreadsheet->getActiveSheet();

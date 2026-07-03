@@ -149,6 +149,15 @@ class DraftUlangController extends BaseController
             return redirect()->back()->with('error', 'Permintaan tidak valid.');
         }
 
+        // Cegah mengembalikan penilaian ke status Draft pada periode yang
+        // sudah ditutup — jika tidak, konfirmasi ini bisa membuka kembali
+        // data yang seharusnya terkunci permanen setelah periode ditutup.
+        $periodeReq = $this->periodeModel->find($req['periode_id']);
+        if (!$periodeReq || $periodeReq['status'] === 'tutup') {
+            return redirect()->back()
+                             ->with('error', 'Periode untuk permintaan ini sudah ditutup, tidak dapat dikonfirmasi.');
+        }
+
         $catatan = trim($this->request->getPost('catatan_admin') ?? '');
 
         // Update status request

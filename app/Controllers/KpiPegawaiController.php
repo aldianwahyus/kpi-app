@@ -521,13 +521,12 @@ class KpiPegawaiController extends BaseController
                              ->with('error', 'Pegawai sumber belum memiliki KPI.');
         }
 
-        // Hapus KPI lama pegawai tujuan
+        // Hapus KPI lama pegawai tujuan (perilaku copy satu pegawai — replace)
         $this->kpiPegawaiModel->deleteByPegawai($pegawaiId);
 
-        // Copy dari sumber
         $now = date('Y-m-d H:i:s');
         foreach ($sourceKpi as $kpi) {
-            $this->kpiPegawaiModel->insert([
+            $newKpId = $this->kpiPegawaiModel->insert([
                 'pegawai_id'       => $pegawaiId,
                 'kpi_id'           => $kpi['kpi_id'],
                 'divisi_id'        => $pegawai['divisi_id'],
@@ -539,9 +538,384 @@ class KpiPegawaiController extends BaseController
                 'created_at'       => $now,
                 'updated_at'       => $now,
             ]);
+
+            // Salin Parameter Turunan jika ada (perbaikan: sebelumnya Turunan
+            // tidak ikut disalin sehingga konfigurasi Turunan hilang)
+            if ($newKpId) {
+                $turunans = $this->kpiPegawaiTurunanModel
+                                 ->getByKpiPegawai($kpi['id']);
+                foreach ($turunans as $t) {
+                    $this->kpiPegawaiTurunanModel->insert([
+                        'kpi_pegawai_id'     => $newKpId,
+                        'nama_turunan'       => $t['nama_turunan'],
+                        'bobot'              => $t['bobot'],
+                        'target'             => $t['target'],
+                        'deskripsi_target'   => $t['deskripsi_target'] ?? null,
+                        'polarity'           => $t['polarity']           ?? 'max',
+                        'perubahan_polarity' => $t['perubahan_polarity'] ?? 'pos',
+                        'satuan'             => $t['satuan']             ?? null,
+                        'urutan'             => $t['urutan'],
+                        'is_active'          => 1,
+                        'created_at'         => $now,
+                        'updated_at'         => $now,
+                    ]);
+                }
+            }
         }
 
         return redirect()->to(base_url("kpi-pegawai/edit/$pegawaiId"))
-                         ->with('success', 'KPI berhasil disalin dari pegawai lain.');
+                         ->with('success', 'KPI beserta Parameter Turunan berhasil disalin dari pegawai lain.');
+    }
+
+    // ══ SALIN MASSAL KE SELURUH PEGAWAI DI SATU DIVISI ═══════
+
+    public function copyMassalForm(): string
+    {
+        $check = $this->checkMenuAccess('penilaian');
+        if ($check !== true) return $check;
+
+        $pegawaiList = $this->pegawaiModel->getAllWithDivisi();
+        $divisiList  = $this->divisiModel->getActive();
+
+        return view('layouts/main', [
+            'title'   => 'Salin KPI Massal per Divisi',
+            'content' => view('kpi_pegawai/_copy_massal', [
+                'pegawaiList' => $pegawaiList,
+                'divisiList'  => $divisiList,
+            ]),
+        ]);
+    }
+
+    public function copyMassal()
+    {
+        $check = $this->checkMenuAccess('penilaian');
+        if ($check !== true) return $check;
+
+        $sourceId = (int)$this->request->getPost('source_pegawai_id');
+        $divisiId = (int)$this->request->getPost('divisi_id');
+
+        if (!$sourceId || !$divisiId) {
+            return redirect()->back()->withInput()
+                             ->with('error', 'Pegawai sumber dan divisi tujuan wajib dipilih.');
+        }
+
+        if (!$this->canAccessPegawai($sourceId)) return $this->forbidden();
+
+        $sourceKpi = $this->kpiPegawaiModel->getByPegawai($sourceId);
+        if (empty($sourceKpi)) {
+            return redirect()->back()
+                             ->with('error', 'Pegawai sumber belum memiliki KPI.');
+        }
+
+        // Semua pegawai di divisi tujuan kecuali pegawai sumber itu sendiri
+        $semuaPegawai = $this->pegawaiModel->db->table('pegawai')
+            ->where('divisi_id', $divisiId)
+            ->where('is_active', 1)
+            ->where('id !=', $sourceId)
+            ->get()->getResultArray();
+
+        if (empty($semuaPegawai)) {
+            return redirect()->back()
+                             ->with('error', 'Tidak ada pegawai lain di divisi yang dipilih.');
+        }
+
+        $berhasil = 0;
+        $dilewati = 0;
+        $now      = date('Y-m-d H:i:s');
+
+        // Cache Turunan sumber — query sekali, tidak per pegawai
+        $turunanBySumber = [];
+        foreach ($sourceKpi as $kpi) {
+            $turunanBySumber[$kpi['id']] = $this->kpiPegawaiTurunanModel
+                                                ->getByKpiPegawai($kpi['id']);
+        }
+
+        foreach ($semuaPegawai as $pegawai) {
+            $pegawaiId = (int)$pegawai['id'];
+
+            foreach ($sourceKpi as $kpi) {
+                // Skip — KPI sudah ada untuk pegawai ini
+                if ($this->kpiPegawaiModel->isAssigned($pegawaiId, $kpi['kpi_id'])) {
+                    $dilewati++;
+                    continue;
+                }
+
+                $newKpId = $this->kpiPegawaiModel->insert([
+                    'pegawai_id'       => $pegawaiId,
+                    'kpi_id'           => $kpi['kpi_id'],
+                    'divisi_id'        => $divisiId,
+                    'bobot'            => $kpi['bobot'],
+                    'target'           => $kpi['target'] ?? 100.00,
+                    'deskripsi_target' => $kpi['deskripsi_target'] ?? null,
+                    'urutan'           => $kpi['urutan'],
+                    'is_active'        => 1,
+                    'created_at'       => $now,
+                    'updated_at'       => $now,
+                ]);
+
+                if ($newKpId) {
+                    $berhasil++;
+                    foreach (($turunanBySumber[$kpi['id']] ?? []) as $t) {
+                        $this->kpiPegawaiTurunanModel->insert([
+                            'kpi_pegawai_id'     => $newKpId,
+                            'nama_turunan'       => $t['nama_turunan'],
+                            'bobot'              => $t['bobot'],
+                            'target'             => $t['target'],
+                            'deskripsi_target'   => $t['deskripsi_target'] ?? null,
+                            'polarity'           => $t['polarity']           ?? 'max',
+                            'perubahan_polarity' => $t['perubahan_polarity'] ?? 'pos',
+                            'satuan'             => $t['satuan']             ?? null,
+                            'urutan'             => $t['urutan'],
+                            'is_active'          => 1,
+                            'created_at'         => $now,
+                            'updated_at'         => $now,
+                        ]);
+                    }
+                }
+            }
+        }
+
+        $pesan = "$berhasil KPI berhasil disalin ke " . count($semuaPegawai) . " pegawai.";
+        if ($dilewati > 0) $pesan .= " $dilewati KPI dilewati (sudah ada).";
+
+        return redirect()->to(base_url('kpi-pegawai'))->with('success', $pesan);
+    }
+
+    // ══ IMPORT KPI PEGAWAI DARI EXCEL ════════════════════════
+
+    public function importForm(): string
+    {
+        $check = $this->checkMenuAccess('penilaian');
+        if ($check !== true) return $check;
+
+        return view('layouts/main', [
+            'title'   => 'Import KPI Per Pegawai dari Excel',
+            'content' => view('kpi_pegawai/_import'),
+        ]);
+    }
+
+    public function importTemplate()
+    {
+        $check = $this->checkMenuAccess('penilaian');
+        if ($check !== true) return $check;
+
+        $spreadsheet = new \PhpOffice\PhpSpreadsheet\Spreadsheet();
+        $sheet       = $spreadsheet->getActiveSheet();
+        $sheet->setTitle('Import KPI Pegawai');
+
+        $headers = [
+            'A' => 'Tipe *', 'B' => 'NIP/Email Pegawai *', 'C' => 'Kode KPI *',
+            'D' => 'Nama Turunan', 'E' => 'Bobot (desimal) *', 'F' => 'Target *',
+            'G' => 'Deskripsi Target', 'H' => 'Satuan',
+            'I' => 'Polarity (max/min)', 'J' => 'Perubahan Polarity (pos/neg)', 'K' => 'Urutan',
+        ];
+        foreach ($headers as $col => $h) {
+            $sheet->setCellValue("{$col}1", $h);
+            $sheet->getStyle("{$col}1")->getFont()->setBold(true);
+            $sheet->getColumnDimension($col)->setAutoSize(true);
+        }
+
+        $contoh = [
+            ['INDUK',   '198501012020', 'MR-F1', '',                  '0.15',  '100', 'Kepuasan nasabah minimal 80%', '',     '',    '',    '1'],
+            ['TURUNAN', '',             '',       'Kepuasan Cabang A', '0.075', '80',  'Cabang Mataram min 80 poin',  'Skor', 'max', 'pos', '1'],
+            ['TURUNAN', '',             '',       'Kepuasan Cabang B', '0.075', '70',  'Cabang Bima min 70 poin',     'Skor', 'max', 'pos', '2'],
+            ['INDUK',   '198501012020', 'MR-C1', '',                  '0.10',  '50',  'Nasabah baru min 50 orang',   '',     '',    '',    '2'],
+            ['INDUK',   '199203152021', 'MR-F1', '',                  '0.20',  '90',  '',                            '',     '',    '',    '1'],
+        ];
+        foreach ($contoh as $i => $row) {
+            foreach ($row as $j => $val) {
+                $col = chr(ord('A') + $j);
+                $sheet->setCellValue("{$col}" . ($i + 2), $val);
+            }
+        }
+
+        $notes = [
+            'M1' => 'CATATAN:', 'M2' => 'Tipe: INDUK atau TURUNAN',
+            'M3' => 'NIP/Email di baris TURUNAN boleh kosong (mengikuti INDUK di atasnya)',
+            'M4' => 'Kode KPI di baris TURUNAN boleh kosong, isi Nama Turunan-nya',
+            'M5' => 'KPI yang sudah ada akan DILEWATI (Skip)',
+            'M6' => 'Polarity default: max | Perubahan default: pos',
+        ];
+        foreach ($notes as $cell => $val) $sheet->setCellValue($cell, $val);
+        $sheet->getColumnDimension('M')->setWidth(65);
+
+        $writer = new \PhpOffice\PhpSpreadsheet\Writer\Xlsx($spreadsheet);
+        header('Content-Type: application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
+        header('Content-Disposition: attachment; filename="Template_Import_KPI_Pegawai.xlsx"');
+        header('Cache-Control: max-age=0');
+        $writer->save('php://output');
+        exit;
+    }
+
+    public function importProcess()
+    {
+        $check = $this->checkMenuAccess('penilaian');
+        if ($check !== true) return $check;
+
+        $file = $this->request->getFile('file_excel');
+        if (!$file || !$file->isValid() || $file->hasMoved()) {
+            return redirect()->back()->with('error', 'File tidak valid. Harap unggah file Excel (.xlsx).');
+        }
+
+        $ext = strtolower($file->getClientExtension());
+        if (!in_array($ext, ['xlsx', 'xls'])) {
+            return redirect()->back()->with('error', 'Format file harus .xlsx atau .xls.');
+        }
+
+        try {
+            $reader      = \PhpOffice\PhpSpreadsheet\IOFactory::createReaderForFile($file->getTempName());
+            $spreadsheet = $reader->load($file->getTempName());
+            $rows        = $spreadsheet->getActiveSheet()->toArray(null, true, true, true);
+        } catch (\Exception $e) {
+            return redirect()->back()->with('error', 'Gagal membaca file: ' . esc($e->getMessage()));
+        }
+
+        $berhasil  = 0;
+        $dilewati  = 0;
+        $errors    = [];
+        $now       = date('Y-m-d H:i:s');
+
+        // State parser: melacak konteks INDUK terakhir
+        $currentPegawaiId = null;
+        $currentKpId      = null;
+        $currentSkipInduk = false;
+
+        foreach ($rows as $i => $row) {
+            if ($i === 1) continue; // Skip header
+
+            $tipe        = strtoupper(trim($row['A'] ?? ''));
+            $nikEmail    = trim($row['B'] ?? '');
+            $kodeKpi     = strtoupper(trim($row['C'] ?? ''));
+            $namaTurunan = trim($row['D'] ?? '');
+            $bobot       = trim($row['E'] ?? '');
+            $target      = trim($row['F'] ?? '');
+            $deskripsi   = trim($row['G'] ?? '');
+            $satuan      = trim($row['H'] ?? '');
+            $polarity    = strtolower(trim($row['I'] ?? 'max'));
+            $perubahan   = strtolower(trim($row['J'] ?? 'pos'));
+            $urutan      = (int)($row['K'] ?? 99) ?: 99;
+
+            if ($tipe === '' && $nikEmail === '' && $kodeKpi === '') continue;
+
+            if ($tipe === 'INDUK') {
+                $currentSkipInduk = false;
+                $currentKpId      = null;
+                $currentPegawaiId = null;
+
+                if ($nikEmail === '') {
+                    $errors[] = "Baris $i: NIP/Email wajib diisi untuk baris INDUK.";
+                    $currentSkipInduk = true; continue;
+                }
+
+                // Lookup pegawai via NIP, atau via email di tabel users
+                // (tabel pegawai tidak punya kolom email — email ada di users)
+                $pegawai = $this->pegawaiModel->db->table('pegawai p')
+                    ->select('p.*')
+                    ->join('users u', 'u.pegawai_id = p.id', 'left')
+                    ->groupStart()
+                        ->where('p.nip', $nikEmail)
+                        ->orWhere('u.email', $nikEmail)
+                    ->groupEnd()
+                    ->where('p.is_active', 1)
+                    ->get()->getRowArray();
+
+                if (!$pegawai) {
+                    $errors[] = "Baris $i: Pegawai '$nikEmail' tidak ditemukan.";
+                    $currentSkipInduk = true; continue;
+                }
+
+                if (!$this->canAccessPegawai((int)$pegawai['id'])) {
+                    $errors[] = "Baris $i: Tidak memiliki akses ke pegawai '$nikEmail'.";
+                    $currentSkipInduk = true; continue;
+                }
+
+                $currentPegawaiId = (int)$pegawai['id'];
+
+                if ($kodeKpi === '') {
+                    $errors[] = "Baris $i: Kode KPI wajib diisi untuk baris INDUK.";
+                    $currentSkipInduk = true; continue;
+                }
+
+                $kpiUnit = $this->pegawaiModel->db->table('kpi_unit')
+                    ->where('kode', $kodeKpi)->where('is_active', 1)
+                    ->get()->getRowArray();
+
+                if (!$kpiUnit) {
+                    $errors[] = "Baris $i: Kode KPI '$kodeKpi' tidak ditemukan.";
+                    $currentSkipInduk = true; continue;
+                }
+
+                if ($bobot === '' || !is_numeric($bobot)) {
+                    $errors[] = "Baris $i: Bobot tidak valid.";
+                    $currentSkipInduk = true; continue;
+                }
+
+                if ($this->kpiPegawaiModel->isAssigned($currentPegawaiId, (int)$kpiUnit['id'])) {
+                    $dilewati++;
+                    $currentSkipInduk = true; continue;
+                }
+
+                $currentKpId = $this->kpiPegawaiModel->insert([
+                    'pegawai_id'       => $currentPegawaiId,
+                    'kpi_id'           => (int)$kpiUnit['id'],
+                    'divisi_id'        => $pegawai['divisi_id'],
+                    'bobot'            => (float)$bobot,
+                    'target'           => $target !== '' ? (float)$target : 100.00,
+                    'deskripsi_target' => $deskripsi ?: null,
+                    'urutan'           => $urutan,
+                    'is_active'        => 1,
+                    'created_at'       => $now,
+                    'updated_at'       => $now,
+                ]);
+
+                if ($currentKpId) { $berhasil++; }
+                else {
+                    $errors[] = "Baris $i: Gagal menyimpan KPI '$kodeKpi'.";
+                    $currentSkipInduk = true;
+                }
+
+            } elseif ($tipe === 'TURUNAN') {
+                if ($currentSkipInduk || !$currentKpId) continue;
+
+                if ($namaTurunan === '') {
+                    $errors[] = "Baris $i: Nama Turunan wajib diisi."; continue;
+                }
+                if ($bobot === '' || !is_numeric($bobot)) {
+                    $errors[] = "Baris $i: Bobot tidak valid untuk Turunan '$namaTurunan'."; continue;
+                }
+
+                if (!in_array($polarity, ['max', 'min']))   $polarity = 'max';
+                if (!in_array($perubahan, ['pos', 'neg']))  $perubahan = 'pos';
+
+                $this->kpiPegawaiTurunanModel->insert([
+                    'kpi_pegawai_id'     => $currentKpId,
+                    'nama_turunan'       => $namaTurunan,
+                    'bobot'              => (float)$bobot,
+                    'target'             => $target !== '' ? (float)$target : 100.00,
+                    'deskripsi_target'   => $deskripsi ?: null,
+                    'satuan'             => $satuan ?: null,
+                    'polarity'           => $polarity,
+                    'perubahan_polarity' => $perubahan,
+                    'urutan'             => $urutan,
+                    'is_active'          => 1,
+                    'created_at'         => $now,
+                    'updated_at'         => $now,
+                ]);
+
+            } elseif ($tipe !== '') {
+                $errors[] = "Baris $i: Tipe '$tipe' tidak dikenal. Gunakan INDUK atau TURUNAN.";
+            }
+        }
+
+        $pesan = "$berhasil KPI berhasil diimport.";
+        if ($dilewati > 0) $pesan .= " $dilewati KPI dilewati (sudah ada).";
+        if (!empty($errors)) {
+            $pesan .= ' ' . count($errors) . ' baris bermasalah: '
+                    . implode('; ', array_slice($errors, 0, 5));
+            if (count($errors) > 5) $pesan .= '... (dan ' . (count($errors) - 5) . ' lainnya)';
+        }
+
+        return redirect()->to(base_url('kpi-pegawai'))
+                         ->with($berhasil > 0 ? 'success' : 'warning', $pesan);
     }
 }

@@ -13,8 +13,8 @@ $role_label = ['admin'=>'Admin','hr'=>'HR Manager','drafter'=>'Drafter','approve
     <?= esc($title ?? 'Dashboard') ?>
   </div>
 
-  <span class="role-badge role-<?= $role ?>">
-    <?= $role_label[$role] ?? $role ?>
+  <span class="role-badge role-<?= esc($role, 'attr') ?>">
+    <?= esc($role_label[$role] ?? $role) ?>
   </span>
 
   <div class="user-badge">

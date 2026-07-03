@@ -147,7 +147,7 @@
         <div class="p-2 border-bottom">
             <input type="text" id="search-kpi"
                 class="form-control form-control-sm"
-                placeholder="Cari nama KPI...">
+                placeholder="Cari nama KPI atau kode...">
         </div>
 
         <?php if (empty($poolGrouped)): ?>
@@ -173,6 +173,7 @@
             ?>
             <?php foreach ($poolGrouped as $perspektif => $kpis): ?>
             <?php $c = $persp_colors[$perspektif] ?? ['bg'=>'#f8f9fa','border'=>'#dee2e6','text'=>'#333']; ?>
+            <div class="kpi-pool-group">
             <div class="px-3 py-1"
                 style="background:<?= $c['bg'] ?>;border-left:3px solid <?= $c['border'] ?>">
             <small class="fw-semibold" style="color:<?= $c['text'] ?>">
@@ -183,7 +184,7 @@
             <?php $isAssigned = in_array($kpi['id'], $assignedIds); ?>
             <div class="d-flex align-items-center gap-2 px-3 py-2
                         border-bottom kpi-master-item"
-                data-name="<?= strtolower($kpi['nama_kpi']) ?>">
+                data-search="<?= esc(strtolower($kpi['nama_kpi'] . ' ' . $kpi['kode'] . ' ' . $kpi['satuan'])) ?>">
             <div class="flex-grow-1">
                 <div style="font-size:13px;
                 <?= $isAssigned ? 'color:#aaa;text-decoration:line-through' : '' ?>">
@@ -219,6 +220,7 @@
             <?php endif; ?>
             </div>
             <?php endforeach; ?>
+            </div>
             <?php endforeach; ?>
         </div>
         <?php endif; ?>
@@ -228,11 +230,17 @@
 </div>
 
 <script>
-// Search KPI
+// Search KPI (mencari berdasarkan nama, kode, dan satuan)
 document.getElementById('search-kpi').addEventListener('input', function() {
-    const q = this.value.toLowerCase();
-    document.querySelectorAll('.kpi-master-item').forEach(el => {
-        el.style.display = el.dataset.name.includes(q) ? '' : 'none';
+    const q = this.value.toLowerCase().trim();
+    document.querySelectorAll('.kpi-pool-group').forEach(group => {
+        let anyVisible = false;
+        group.querySelectorAll('.kpi-master-item').forEach(el => {
+            const match = !q || el.dataset.search.includes(q);
+            el.style.display = match ? '' : 'none';
+            if (match) anyVisible = true;
+        });
+        group.style.display = anyVisible ? '' : 'none';
     });
 });
 

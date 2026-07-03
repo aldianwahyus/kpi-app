@@ -218,15 +218,15 @@ class PenilaianController extends BaseController
                 $skorPerTurunan = [];
 
                 // Validasi ALL-OR-NOTHING: semua Turunan harus diisi.
-                // Jika ada yang kosong/0, KPI Induk ini dilewati seluruhnya —
-                // skor parsial tidak boleh disimpan karena akan menghasilkan
-                // nilai yang menyesatkan (Turunan yang tidak diisi dihitung
-                // sebagai kontribusi 0, sehingga skor Induk menjadi terlalu
-                // rendah padahal Turunan itu sebenarnya belum dinilai).
+                // Jika ada yang benar-benar belum diisi (kosong), KPI Induk ini
+                // dilewati seluruhnya — skor parsial tidak boleh disimpan karena
+                // akan menghasilkan nilai yang menyesatkan. Realisasi = 0 yang
+                // SENGAJA diisi (bukan dikosongkan) dianggap terisi — untuk KPI
+                // ber-polaritas 'min', 0 adalah capaian valid (bahkan terbaik).
                 $turunanTidakLengkap = false;
                 foreach ($listTurunan as $t) {
                     $rt = $turunanInput[$t['id']] ?? null;
-                    if ($rt === null || $rt === '' || (float)$rt == 0.0) {
+                    if ($rt === null || $rt === '') {
                         $turunanTidakLengkap = true;
                         break;
                     }
@@ -263,8 +263,11 @@ class PenilaianController extends BaseController
 
             } else {
                 // ── KPI tanpa Parameter Turunan: alur asli, tidak diubah ──
+                // Hanya lewati KPI yang benar-benar belum diisi (kosong).
+                // Realisasi = 0 yang sengaja diisi tetap disimpan & dihitung —
+                // untuk KPI ber-polaritas 'min', 0 adalah capaian valid.
                 $real = $realisasi[$kpiId] ?? null;
-                if ($real === null || $real === '' || (float)$real == 0.0) continue;
+                if ($real === null || $real === '') continue;
                 $real       = (float)$real;
                 $target     = (float)($kpi['target'] ?? 100);
                 $polarity   = $kpi['polarity'] ?? 'max';
@@ -456,6 +459,13 @@ class PenilaianController extends BaseController
             return $this->response->setJSON(['valid' => false, 'message' => 'KPI tidak ditemukan']);
         }
 
+        // Field belum diisi sama sekali -> jangan tampilkan preview skor
+        // (berbeda dari realisasi = 0 yang sengaja diisi, yang tetap valid
+        // untuk KPI ber-polaritas 'min').
+        if ($realisasi === null || $realisasi === '') {
+            return $this->response->setJSON(['valid' => false, 'message' => 'Realisasi belum diisi.']);
+        }
+
         // 3. Konversi tipe data untuk dikalkulasi
         $realisasi = (float)$realisasi;
         $target    = (float)($currentKpi['target'] ?? 100);
@@ -552,10 +562,13 @@ class PenilaianController extends BaseController
             return $this->response->setJSON(['valid' => false, 'csrf_hash' => csrf_hash()]);
         }
 
-        $realisasi = (float)$realisasi;
-        if ($realisasi == 0) {
+        // Field belum diisi sama sekali -> jangan tampilkan preview skor
+        // (berbeda dari realisasi = 0 yang sengaja diisi, yang tetap valid
+        // untuk Turunan ber-polaritas 'min').
+        if ($realisasi === null || $realisasi === '') {
             return $this->response->setJSON(['valid' => false, 'csrf_hash' => csrf_hash()]);
         }
+        $realisasi = (float)$realisasi;
 
         $target   = (float)($turunan['target']  ?? 100);
         $polarity = $turunan['polarity']          ?? 'max';

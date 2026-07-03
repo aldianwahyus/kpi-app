@@ -55,8 +55,8 @@
     <td class="label">Jabatan</td>
     <td><?= esc($pegawai['jabatan'] ?? '—') ?></td>
     <td class="label">Grade</td>
-    <td class="grade-<?= $grade ?>">
-      <b style="font-size:14px"><?= $grade ?></b> — <?= $gradeLabel ?>
+    <td class="grade-<?= esc($grade, 'attr') ?>">
+      <b style="font-size:14px"><?= esc($grade) ?></b> — <?= esc($gradeLabel) ?>
     </td>
   </tr>
   <tr>

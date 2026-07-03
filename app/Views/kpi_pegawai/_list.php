@@ -3,9 +3,17 @@
     <h5 class="mb-0 fw-semibold" style="color:#1F4E79">
       <i class="ti ti-user-check me-1"></i> KPI Per Pegawai
     </h5>
-    <small class="text-muted">
-      Setup KPI individual untuk setiap pegawai
-    </small>
+    <small class="text-muted">Setup KPI individual untuk setiap pegawai</small>
+  </div>
+  <div class="d-flex gap-2">
+    <a href="<?= base_url('kpi-pegawai/copy-massal') ?>"
+       class="btn btn-outline-secondary btn-sm">
+      <i class="ti ti-copy me-1"></i> Salin Massal
+    </a>
+    <a href="<?= base_url('kpi-pegawai/import') ?>"
+       class="btn btn-outline-primary btn-sm">
+      <i class="ti ti-file-import me-1"></i> Import Excel
+    </a>
   </div>
 </div>
 

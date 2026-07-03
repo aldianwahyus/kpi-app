@@ -556,11 +556,15 @@ document.addEventListener('DOMContentLoaded', function() {
         input.addEventListener('input', function () {
             const turunanId  = this.getAttribute('data-turunan-id');
             const indukKpiId = this.getAttribute('data-induk-kpi');
-            const realisasi  = parseFloat(this.value);
+            const realisasiStr = this.value;
+            const realisasi     = parseFloat(realisasiStr);
 
             const badge = document.getElementById('skorT_' + turunanId);
 
-            if (isNaN(realisasi) || realisasi === 0) {
+            // Hanya field yang benar-benar kosong yang tidak dihitung.
+            // Realisasi = 0 yang sengaja diisi tetap valid (KPI 'min' bisa
+            // memiliki capaian terbaik di angka 0).
+            if (realisasiStr === '' || isNaN(realisasi)) {
                 if (badge) { badge.style.display = 'none'; badge.textContent = ''; }
                 hitungUlangInduk(indukKpiId);
                 return;

@@ -514,7 +514,7 @@
         <div class="p-2 border-bottom">
           <input type="text" id="search-kpi"
                  class="form-control form-control-sm"
-                 placeholder="Cari nama KPI...">
+                 placeholder="Cari nama KPI atau kode...">
         </div>
         <div style="max-height:480px;overflow-y:auto">
           <?php
@@ -527,6 +527,7 @@
           ?>
           <?php foreach ($poolGrouped as $perspektif => $kpis): ?>
           <?php $pc2 = $persp_colors2[$perspektif] ?? ['#f8f9fa','#333']; ?>
+          <div class="kpi-pool-group">
           <div class="px-3 py-1"
                style="background:<?= $pc2[0] ?>;
                       border-left:3px solid <?= $pc2[1] ?>">
@@ -538,7 +539,7 @@
           <?php $isAssigned = in_array($kpi['kpi_id'], $assignedIds); ?>
           <div class="d-flex align-items-center gap-2 px-3 py-2
                       border-bottom kpi-pool-item"
-               data-name="<?= esc(strtolower($kpi['nama_kpi'])) ?>">
+               data-search="<?= esc(strtolower($kpi['nama_kpi'] . ' ' . $kpi['kode'] . ' ' . $kpi['satuan'])) ?>">
             <div class="flex-grow-1">
               <div style="font-size:13px;
                 <?= $isAssigned
@@ -572,6 +573,7 @@
             <?php endif; ?>
           </div>
           <?php endforeach; ?>
+          </div>
           <?php endforeach; ?>
         </div>
       </div>
@@ -663,11 +665,17 @@
 </div>
 
 <script>
-// Search KPI
+// Search KPI (mencari berdasarkan nama, kode, dan satuan)
 document.getElementById('search-kpi').addEventListener('input', function() {
-    const q = this.value.toLowerCase();
-    document.querySelectorAll('.kpi-pool-item').forEach(el => {
-        el.style.display = el.dataset.name.includes(q) ? '' : 'none';
+    const q = this.value.toLowerCase().trim();
+    document.querySelectorAll('.kpi-pool-group').forEach(group => {
+        let anyVisible = false;
+        group.querySelectorAll('.kpi-pool-item').forEach(el => {
+            const match = !q || el.dataset.search.includes(q);
+            el.style.display = match ? '' : 'none';
+            if (match) anyVisible = true;
+        });
+        group.style.display = anyVisible ? '' : 'none';
     });
 });
 

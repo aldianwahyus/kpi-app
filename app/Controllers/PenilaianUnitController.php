@@ -148,11 +148,20 @@ class PenilaianUnitController extends BaseController
         $catatan = $this->request->getPost('catatan')   ?? [];
 
         foreach ($kpiList as $kpi) {
-            $kpiId     = $kpi['id'];
-            $target    = (float)($targets[$kpiId]  ?? 0);
-            $realisasi = (float)($reals[$kpiId]    ?? 0);
+            $kpiId        = $kpi['id'];
+            $targetRaw    = $targets[$kpiId] ?? null;
+            $realisasiRaw = $reals[$kpiId]   ?? null;
 
-            if ($target == 0 && $realisasi == 0) continue;
+            // Lewati hanya jika baris ini benar-benar belum diisi sama sekali.
+            // Realisasi = 0 yang sengaja diisi tetap disimpan & dihitung —
+            // untuk KPI ber-polaritas 'min', 0 adalah capaian valid (bahkan
+            // terbaik), bukan tanda "belum diisi".
+            $targetKosong    = ($targetRaw === null || $targetRaw === '');
+            $realisasiKosong = ($realisasiRaw === null || $realisasiRaw === '');
+            if ($targetKosong && $realisasiKosong) continue;
+
+            $target    = (float)($targetRaw ?? 0);
+            $realisasi = (float)($realisasiRaw ?? 0);
 
             $capaian = $this->calculator->hitungCapaian(
                 $target, $realisasi,
@@ -177,16 +186,22 @@ class PenilaianUnitController extends BaseController
     // ── AJAX Hitung Capaian ──────────────────────────────────
     public function ajaxHitung()
     {
-        $kpiId     = (int)$this->request->getPost('kpi_id');
-        $target    = (float)$this->request->getPost('target');
-        $realisasi = (float)$this->request->getPost('realisasi');
+        $kpiId        = (int)$this->request->getPost('kpi_id');
+        $targetRaw    = $this->request->getPost('target');
+        $realisasiRaw = $this->request->getPost('realisasi');
+        $target       = (float)$targetRaw;
+        $realisasi    = (float)$realisasiRaw;
 
         $kpi = $this->kpiUnitModel->find($kpiId);
         if (!$kpi) {
             return $this->response->setJSON(['capaian'=>0,'pct'=>'0%','csrf_hash'=>csrf_hash()]);
         }
 
-        $capaian = ($target > 0 && $realisasi > 0)
+        // Realisasi = 0 yang sengaja diisi tetap dihitung (valid untuk KPI
+        // ber-polaritas 'min') — hanya field yang benar-benar kosong yang
+        // tidak dihitung.
+        $realisasiKosong = ($realisasiRaw === null || $realisasiRaw === '');
+        $capaian = ($target > 0 && !$realisasiKosong)
             ? $this->calculator->hitungCapaian(
                 $target, $realisasi,
                 $kpi['polarity'],

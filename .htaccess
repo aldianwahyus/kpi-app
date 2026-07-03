@@ -1,0 +1,17 @@
+# This application's web server document root points at this folder
+# instead of /public, so anything not explicitly denied here would
+# otherwise be directly downloadable over HTTP. Block source/config
+# files at this level; app/, tests/ and writable/ already ship their
+# own deny-all .htaccess.
+
+<IfModule mod_authz_core.c>
+    <FilesMatch "(^\.|composer\.(json|lock)|package(-lock)?\.json|phpunit\.xml(\.dist)?|\.env(\..*)?$|\.sql$|\.log$|\.md$)">
+        Require all denied
+    </FilesMatch>
+</IfModule>
+<IfModule !mod_authz_core.c>
+    <FilesMatch "(^\.|composer\.(json|lock)|package(-lock)?\.json|phpunit\.xml(\.dist)?|\.env(\..*)?$|\.sql$|\.log$|\.md$)">
+        Order allow,deny
+        Deny from all
+    </FilesMatch>
+</IfModule>

@@ -101,8 +101,8 @@ $min   = $total > 0 ? round(min(array_column($rekap,'nilai_akhir')),2) : 0;
       <td class="text-center">
         <b><?= number_format((float)$r['nilai_akhir'],2) ?></b>
       </td>
-      <td class="text-center grade-<?= $r['grade'] ?? '' ?>">
-        <?= $r['grade'] ?? '—' ?>
+      <td class="text-center grade-<?= esc($r['grade'] ?? '', 'attr') ?>">
+        <?= esc($r['grade'] ?? '—') ?>
       </td>
     </tr>
     <?php endforeach; ?>

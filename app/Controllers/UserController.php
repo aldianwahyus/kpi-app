@@ -21,7 +21,8 @@ class UserController extends BaseController
         if (!in_array(session()->get('role'), ['admin', 'hr'])) return $this->forbidden();
 
         $users = $this->userModel->db->table('users u')
-            ->select('u.*, p.nama as nama_pegawai,
+            ->select('u.id, u.nama, u.email, u.role, u.is_active, u.last_login, u.pegawai_id,
+                      p.nama as nama_pegawai,
                       p.jabatan, p.nip,
                       d.nama as divisi')
             ->join('pegawai p', 'p.id = u.pegawai_id', 'left')

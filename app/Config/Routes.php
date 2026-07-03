@@ -135,10 +135,17 @@ $routes->group('', ['filter' => 'auth'], function($routes) {
     $routes->post('kpi-pegawai/add/(:num)',        'KpiPegawaiController::add/$1');
     $routes->post('kpi-pegawai/save-bobot/(:num)', 'KpiPegawaiController::saveBobot/$1');
     $routes->get('kpi-pegawai/delete/(:num)',      'KpiPegawaiController::delete/$1');
-    $routes->post('kpi-pegawai/copy/(:num)',       'KpiPegawaiController::copy/$1'); // <-- UBAH copyFrom MENJADI copy DI SINI
+    $routes->post('kpi-pegawai/copy/(:num)',       'KpiPegawaiController::copy/$1');
     $routes->post('kpi-pegawai/turunan/add/(:num)',    'KpiPegawaiController::addTurunan/$1');
     $routes->get('kpi-pegawai/turunan/delete/(:num)',  'KpiPegawaiController::deleteTurunan/$1');
     $routes->post('kpi-pegawai/turunan/update/(:num)', 'KpiPegawaiController::updateTurunan/$1');
+    // Salin Massal per Divisi
+    $routes->get('kpi-pegawai/copy-massal',        'KpiPegawaiController::copyMassalForm');
+    $routes->post('kpi-pegawai/copy-massal',       'KpiPegawaiController::copyMassal');
+    // Import Excel
+    $routes->get('kpi-pegawai/import',             'KpiPegawaiController::importForm');
+    $routes->get('kpi-pegawai/import-template',    'KpiPegawaiController::importTemplate');
+    $routes->post('kpi-pegawai/import',            'KpiPegawaiController::importProcess');
 
     // Approval
     $routes->post('penilaian/submit/(:num)',  'PenilaianController::submit/$1');
