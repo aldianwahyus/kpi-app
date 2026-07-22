@@ -25,7 +25,7 @@ class AiController extends BaseController
     }
 
     // ── Halaman Chat AI ──────────────────────────────────────
-    public function index(): string
+    public function index()
     {
         $check = $this->checkMenuAccess('ai');
         if ($check !== true) return $check;

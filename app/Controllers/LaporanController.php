@@ -74,12 +74,12 @@ class LaporanController extends BaseController
 
         $rekap   = $this->penilaianModel->getRekapKombinasi((int)$periodeId, $divisiScope);
 
-        // ── FIX: Hitung ulang counter distribusi untuk Skema Grade Baru (M, SB, B, C) ──
+        // Distribusi grade sesuai skema Yudisium (Istimewa/Sangat Baik/Baik/Cukup)
         $distribusi = [
-            'M'  => 0,
+            'IS' => 0,
             'SB' => 0,
             'B'  => 0,
-            'C'  => 0
+            'C'  => 0,
         ];
 
         foreach ($rekap as $row) {
@@ -257,12 +257,12 @@ class LaporanController extends BaseController
         }
         $sheet->getRowDimension(3)->setRowHeight(22);
 
-        // ── FIX: Standarisasi Warna & Teks Skema Grade Baru (M, SB, B, C) ──
+        // Standarisasi warna & teks sesuai skema Yudisium (Istimewa/Sangat Baik/Baik/Cukup)
         $grade_styles = [
-            'M'  => ['bg' => '1F4E79', 'fg' => 'FFFFFF'], // Memuaskan (Biru Tua, Teks Putih)
-            'SB' => ['bg' => 'E2EFDA', 'fg' => '375623'], // Sangat Baik (Hijau Muda, Teks Hijau Tua)
-            'B'  => ['bg' => 'DEEBF7', 'fg' => '1F4E79'], // Baik (Biru Soft, Teks Biru)
-            'C'  => ['bg' => 'FFF2CC', 'fg' => '7F6000'], // Cukup (Kuning Soft, Teks Cokelat Tua)
+            'IS' => ['bg' => '1E7A55', 'fg' => 'FFFFFF'], // Istimewa (Hijau Tua, Teks Putih)
+            'SB' => ['bg' => 'A9D18E', 'fg' => '1E4620'], // Sangat Baik (Hijau Muda, Teks Hijau Tua)
+            'B'  => ['bg' => 'FFC000', 'fg' => '7F6000'], // Baik (Oranye, Teks Cokelat Tua)
+            'C'  => ['bg' => 'FCE4D6', 'fg' => 'C00000'], // Cukup (Merah Soft, Teks Merah Tua)
         ];
 
         foreach ($rekap as $i => $r) {
@@ -457,14 +457,23 @@ class LaporanController extends BaseController
                    : ($cap >= 0.61 ? 'FFF2CC' : 'FCE4D6'));
             $bg = $i % 2 === 0 ? 'FFFFFF' : $ABU;
 
+            $realisasiDisplay = $kpi['realisasi'];
+            $targetDisplay    = $kpi['target'];
+            if ($kpi['polarity'] === 'special') {
+                $realisasiDisplay = ((float)($kpi['realisasi'] ?? 0) == 1.0) ? 'Ada' : 'Tidak Ada';
+                $targetDisplay    = '—'; // Tidak berlaku untuk Special Scoring
+            } elseif ($kpi['polarity'] === 'tertimbang') {
+                $realisasiDisplay = $kpi['realisasi'] . ' / Harian: ' . ($kpi['realisasi_harian'] ?? 0) . '%';
+            }
+
             $rowData = [
                 $i+1,
                 $kpi['perspektif'],
                 $kpi['nama_kpi'],
                 $kpi['kode'],
                 round($kpi['bobot']*100,1).'%',
-                $kpi['target'],
-                $kpi['realisasi'],
+                $targetDisplay,
+                $realisasiDisplay,
                 round($cap*100,2).'%',
             ];
 

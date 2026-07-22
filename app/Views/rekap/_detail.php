@@ -35,10 +35,10 @@
     <div class="stat-card text-center">
       <?php
       $gc = match($grade ?? '') {
-          'M'  => ['#1F4E79','#FFFFFF'],
-          'SB' => ['#C6EFCE','#375623'],
-          'B'  => ['#BDD7EE','#1F4E79'],
-          'C'  => ['#FFF2CC','#7F6000'],
+          'IS' => ['#1E7A55','#FFFFFF'],
+          'SB' => ['#A9D18E','#1E4620'],
+          'B'  => ['#FFC000','#7F6000'],
+          'C'  => ['#FCE4D6','#C00000'],
           default => ['#f0f0f0','#888'],
       };
       ?>
@@ -76,14 +76,14 @@
         <div class="flex-grow-1">
           <div class="progress" style="height:8px">
             <div class="progress-bar"
-                 style="width:<?= min(100, round($nilaiCapaian, 1)) ?>%;
+                 style="width:<?= min(100, round($nilaiCapaian / 4 * 100, 1)) ?>%;
                         background:<?= $pc[0] ?>">
             </div>
           </div>
         </div>
         <div style="width:50px;text-align:right;font-size:12px;
                     font-weight:600;color:<?= $pc[0] ?>">
-          <?= round($nilaiCapaian, 1) ?>%
+          <?= round($nilaiCapaian, 2) ?> / 4
         </div>
       </div>
       <?php endforeach; ?>
@@ -116,7 +116,7 @@ $persp_style = [
     ?>
     <span class="badge"
           style="background:<?= $ps['border'] ?>;font-size:11px">
-      Kontribusi: <?= round($kontribusi_persp * 100, 2) ?>
+      Kontribusi: <?= round($kontribusi_persp, 2) ?>
     </span>
   </div>
   <div class="card-body p-0">
@@ -153,14 +153,30 @@ $persp_style = [
           <td class="text-center fw-semibold" style="color:#1F4E79">
             <?= round($kpi['bobot']*100,1) ?>%
           </td>
+          <?php
+            $rekapPolarityIcons = ['max'=>['↑','#375623'],'min'=>['↓','#C00000'],'precise'=>['◎','#1F4E79'],'special'=>['⚑','#7F6000'],'tertimbang'=>['⚖','#5C2A6B']];
+            [$rpIcon, $rpColor] = $rekapPolarityIcons[$kpi['polarity']] ?? ['—', '#888'];
+          ?>
           <td class="text-center">
-            <span style="color:<?= $kpi['polarity']==='max'?'#375623':'#C00000' ?>;
-                         font-weight:600">
-              <?= $kpi['polarity']==='max' ? '↑' : '↓' ?>
+            <span style="color:<?= $rpColor ?>; font-weight:600">
+              <?= $rpIcon ?>
             </span>
           </td>
-          <td class="text-center"><?= number_format($kpi['target'],2) ?></td>
-          <td class="text-center"><?= number_format($kpi['realisasi'],2) ?></td>
+          <td class="text-center">
+            <?= $kpi['polarity'] === 'special' ? '—' : number_format($kpi['target'],2) ?>
+          </td>
+          <td class="text-center">
+            <?php if ($kpi['polarity'] === 'special'): ?>
+              <?= ((float)($kpi['realisasi'] ?? 0) == 1.0) ? 'Ada' : 'Tidak Ada' ?>
+            <?php elseif ($kpi['polarity'] === 'tertimbang'): ?>
+              <?= number_format((float)($kpi['realisasi'] ?? 0),2) ?>
+              <small class="text-muted d-block" style="font-size:10px">
+                Harian: <?= number_format((float)($kpi['realisasi_harian'] ?? 0),2) ?>%
+              </small>
+            <?php else: ?>
+              <?= number_format($kpi['realisasi'],2) ?>
+            <?php endif; ?>
+          </td>
           <td class="text-center">
             <span class="badge"
                   style="background:<?= $cbg ?>;color:<?= $cc ?>;
@@ -169,7 +185,7 @@ $persp_style = [
             </span>
           </td>
           <td class="text-center fw-semibold" style="color:#1F4E79">
-            <?= round($kpi['nilai_kontribusi']*100,2) ?>
+            <?= round($kpi['nilai_kontribusi'],2) ?>
           </td>
         </tr>
         <?php endforeach; ?>

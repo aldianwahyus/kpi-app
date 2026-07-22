@@ -99,6 +99,13 @@ $routes->group('', ['filter' => 'auth'], function($routes) {
     $routes->get('rekap',                    'RekapController::index');
     $routes->get('rekap/detail/(:num)',      'RekapController::detail/$1');
 
+    // Arsip Periode (Periode yang sudah ditutup) — khusus Administrator
+    $routes->get('arsip-periode',                               'ArsipPeriodeController::index');
+    $routes->get('arsip-periode/detail/(:num)',                 'ArsipPeriodeController::detail/$1');
+    $routes->get('arsip-periode/detail/(:num)/pegawai/(:num)',  'ArsipPeriodeController::detailPegawai/$1/$2');
+    $routes->get('arsip-periode/export-pdf/(:num)',             'ArsipPeriodeController::exportPdf/$1');
+    $routes->get('arsip-periode/export-excel/(:num)',           'ArsipPeriodeController::exportExcel/$1');
+
     // Manajemen User
     $routes->get('master/users',                 'UserController::index');
     $routes->get('master/users/create',          'UserController::create');

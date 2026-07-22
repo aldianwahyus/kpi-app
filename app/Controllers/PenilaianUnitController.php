@@ -71,7 +71,7 @@ class PenilaianUnitController extends BaseController
     }
 
     // ── Form Input KPI Unit ──────────────────────────────────
-    public function form(int $divisiId): string
+    public function form(int $divisiId)
     {
         $authCheck = $this->checkDivisiAccess($divisiId);
         if ($authCheck !== true) return $authCheck;

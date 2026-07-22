@@ -4,7 +4,7 @@ new Chart(document.getElementById('chartPerspektif'), {
   data: {
     labels: ['Financial','Customer','Internal Process','Learning & Growth'],
     datasets: [{
-      label: 'Rata-rata Capaian (%)',
+      label: 'Rata-rata Skor (skala 1-4)',
       data: [
         <?= $avg_financial ?>,
         <?= $avg_customer  ?>,
@@ -23,32 +23,26 @@ new Chart(document.getElementById('chartPerspektif'), {
     scales: {
       y: {
         beginAtZero: true,
-        max: 150,
+        max: 4,
         grid: { color: '#f0f0f0' },
-        ticks: {
-          callback: value => value + '%'
-        }
       }
     }
   }
 });
 
-// PERBAIKAN: Mengubah total konfigurasi chartGrade ke Grade Baru (M, SB, B, C)
+// Grade sesuai skema kriteria pencapaian (Istimewa/Baik/Cukup/Kurang)
 new Chart(document.getElementById('chartGrade'), {
   type: 'doughnut',
   data: {
-    // 1. Mengubah nama Label Grafik
-    labels: ['M – Memuaskan','SB – Sangat Baik','B – Baik','C – Cukup'],
+    labels: ['IS – Istimewa','SB – Sangat Baik','B – Baik','C – Cukup'],
     datasets: [{
-      // 2. Menghubungkan data dengan Key Array Grade Baru dari Controller
       data: [
-        <?= $grade_counts['M'] ?? 0 ?>,
+        <?= $grade_counts['IS'] ?? 0 ?>,
         <?= $grade_counts['SB'] ?? 0 ?>,
         <?= $grade_counts['B'] ?? 0 ?>,
         <?= $grade_counts['C'] ?? 0 ?>
       ],
-      // 3. Menyesuaikan susunan warna lingkaran doughnut
-      backgroundColor: ['#C6EFCE','#BDD7EE','#FFF2CC','#FCE4D6'],
+      backgroundColor: ['#1E7A55','#A9D18E','#FFC000','#FCE4D6'],
       borderWidth: 0,
     }]
   },

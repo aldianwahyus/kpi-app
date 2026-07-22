@@ -229,19 +229,22 @@ $isAdmin = (session()->get('role') === 'admin'); // Shortcut flag penentu Admin
           <tr>
             <th style="width:30px"></th>
             <th>Nama Parameter KPI</th>
+            <th style="width:120px" class="text-center">Realisasi</th>
+            <th style="width:100px" class="text-center">Target</th>
+            <th style="width:90px" class="text-center">Pencapaian</th>
+            <th style="width:70px" class="text-center">Skor</th>
+            <th style="width:70px" class="text-center">Nilai</th>
             <th style="width:70px" class="text-center">Bobot</th>
-            <th style="width:110px" class="text-center">Target</th>
-            <th style="width:140px" class="text-center">Realisasi</th>
-            <th style="width:90px" class="text-center">Skor</th>
-            <th style="width:100px" class="text-center">Kontribusi</th>
-            <th style="width:180px">Catatan</th>
+            <th style="width:90px" class="text-center">Total</th>
+            <th style="width:160px">Catatan</th>
           </tr>
         </thead>
         <tbody>
+          <?php $calc = $calc ?? new \App\Services\KpiCalculationService(); ?>
           <?php foreach ($kpis as $kpi): ?>
-          <?php 
-            $ex       = $existing[$kpi['kpi_id']] ?? null; 
-            $target   = (float)($kpi['target'] ?? 100); 
+          <?php
+            $ex       = $existing[$kpi['kpi_id']] ?? null;
+            $target   = (float)($kpi['target'] ?? 100);
             $bobot    = (float)($kpi['bobot'] ?? 0);
             $polarity = $kpi['polarity'] ?? 'max';
             $isCapped = isset($kpi['is_capped']) ? (int)$kpi['is_capped'] : 1;
@@ -249,6 +252,26 @@ $isAdmin = (session()->get('role') === 'admin'); // Shortcut flag penentu Admin
             $listTurunan  = $turunanByInduk[$kpi['id']] ?? [];
             $punyaTurunan = !empty($listTurunan);
             $realisasiTurunanExisting = $realisasiTurunan[$kpi['id']] ?? [];
+
+            // Kolom Pencapaian hanya bermakna sebagai rasio tunggal untuk
+            // KPI tanpa Parameter Turunan berpolarity max/min/precise — KPI
+            // Induk yang skornya rata-rata tertimbang dari Turunan bersifat
+            // informatif saja (bukan Skor asli); 'special' bersifat biner
+            // (Ada/Tidak Ada); 'tertimbang' punya DUA indikator terpisah
+            // sehingga ditampilkan sebagai rincian Skor Dasar x Pengkali.
+            $pencapaianDisplay = null;
+            if (!$punyaTurunan && $ex) {
+                if (in_array($polarity, ['max', 'min', 'precise'], true) && $ex['realisasi'] !== null && $target > 0) {
+                    $pRaw = $calc->hitungPencapaianPersen((float)$ex['realisasi'], $target, $polarity === 'precise' ? 'max' : $polarity);
+                    $pencapaianDisplay = is_infinite($pRaw) ? '∞' : number_format($pRaw, 2) . '%';
+                } elseif ($polarity === 'special' && $ex['realisasi'] !== null) {
+                    $pencapaianDisplay = ((float)$ex['realisasi'] == 1.0) ? 'Ada' : 'Tidak Ada';
+                } elseif ($polarity === 'tertimbang' && $ex['realisasi'] !== null && ($ex['realisasi_harian'] ?? null) !== null) {
+                    $skorIndikatorDisplay = $calc->hitungSkorCapaian((float)$ex['realisasi'], $target, 'max', true);
+                    $pengkaliDisplay      = $calc->hitungPengkaliHarian((float)$ex['realisasi_harian']);
+                    $pencapaianDisplay = number_format($skorIndikatorDisplay, 1) . ' × ' . number_format($pengkaliDisplay * 100, 0) . '%';
+                }
+            }
           ?>
           <tr class="kpi-row" 
               data-kpi="<?= $kpi['kpi_id'] ?>" 
@@ -282,12 +305,6 @@ $isAdmin = (session()->get('role') === 'admin'); // Shortcut flag penentu Admin
               </div>
               <?php endif; ?>
             </td>
-            <td class="text-center fw-semibold" style="color:#1F4E79">
-              <?= round($bobot * 100, 1) ?>%
-            </td>
-            <td class="text-center fw-bold text-muted">
-              <?= number_format($target, 2) ?>
-            </td>
             <td class="text-center">
               <?php
               $currentStatus = $statusApproval['current'] ?? 'draft';
@@ -307,6 +324,7 @@ $isAdmin = (session()->get('role') === 'admin'); // Shortcut flag penentu Admin
                   $isRealisasiReadonly = !in_array($currentStatus, ['draft', 'rejected']);
               }
               ?>
+              <?php $roAttr = $isRealisasiReadonly ? 'readonly style="background:#f8f9fa;cursor:not-allowed"' : ''; ?>
               <?php if ($punyaTurunan): ?>
                 <!-- Realisasi Induk selalu readonly & otomatis terisi SUM
                      Realisasi seluruh Turunan, dihitung ulang real-time oleh
@@ -316,29 +334,82 @@ $isAdmin = (session()->get('role') === 'admin'); // Shortcut flag penentu Admin
                        value="<?= $ex ? number_format((float)$ex['realisasi'], 2, '.', '') : '' ?>"
                        readonly style="background:#f8f9fa;cursor:not-allowed"
                        title="Otomatis dari SUM Realisasi Parameter Turunan di bawah">
+              <?php elseif ($polarity === 'special'): ?>
+                <!-- Special Scoring: penilaian biner Ada/Tidak Ada, bukan angka -->
+                <select name="realisasi[<?= $kpi['kpi_id'] ?>]" class="form-select form-select-sm realisasi-input" <?= $roAttr ?>>
+                  <option value=""  <?= ($ex === null || $ex['realisasi'] === null) ? 'selected' : '' ?>>-- Pilih --</option>
+                  <option value="1" <?= ($ex && (float)$ex['realisasi'] == 1.0) ? 'selected' : '' ?>>Ada</option>
+                  <option value="0" <?= ($ex && (float)$ex['realisasi'] == 0.0) ? 'selected' : '' ?>>Tidak Ada</option>
+                </select>
+              <?php elseif ($polarity === 'tertimbang'): ?>
+                <!-- Scoring Tertimbang: Realisasi Posisi Akhir (vs Target) +
+                     Rata-rata Harian (persentase langsung, sudah dihitung di
+                     luar sistem selama periode penilaian, bukan rasio
+                     realisasi/target). -->
+                <div class="mb-1">
+                  <small class="text-muted" style="font-size:10px">Posisi Akhir</small>
+                  <input type="number" name="realisasi[<?= $kpi['kpi_id'] ?>]"
+                         class="form-control form-control-sm realisasi-input"
+                         value="<?= $ex ? $ex['realisasi'] : '' ?>" <?= $roAttr ?>>
+                </div>
+                <div>
+                  <small class="text-muted" style="font-size:10px">Rata-rata Harian (%)</small>
+                  <div class="input-group input-group-sm">
+                    <input type="number" name="realisasi_harian[<?= $kpi['kpi_id'] ?>]"
+                           class="form-control form-control-sm realisasi-harian-input"
+                           value="<?= ($ex && isset($ex['realisasi_harian'])) ? $ex['realisasi_harian'] : '' ?>" <?= $roAttr ?>>
+                    <span class="input-group-text" style="font-size:11px">%</span>
+                  </div>
+                </div>
               <?php else: ?>
                 <input type="number" name="realisasi[<?= $kpi['kpi_id'] ?>]"
                        class="form-control realisasi-input"
-                       value="<?= $ex ? $ex['realisasi'] : '' ?>"
-                       <?= $isRealisasiReadonly ? 'readonly style="background:#f8f9fa;cursor:not-allowed"' : '' ?>>
+                       value="<?= $ex ? $ex['realisasi'] : '' ?>" <?= $roAttr ?>>
+              <?php endif; ?>
+            </td>
+            <td class="text-center fw-bold text-muted">
+              <?php if ($polarity === 'special'): ?>
+                <span title="Tidak berlaku untuk Special Scoring">—</span>
+              <?php elseif ($polarity === 'tertimbang'): ?>
+                <div style="font-size:11px"><?= number_format($target, 2) ?></div>
+                <div style="font-size:10px" class="fw-normal">(Harian: % langsung)</div>
+              <?php else: ?>
+                <?= number_format($target, 2) ?>
+              <?php endif; ?>
+            </td>
+            <td class="text-center fw-semibold pencapaian-output" style="color:#1F4E79">
+              <?php if ($punyaTurunan): ?>
+                <span class="text-muted" style="font-size:11px">Lihat per Parameter Turunan</span>
+              <?php else: ?>
+                <?= $pencapaianDisplay ?? '' ?>
               <?php endif; ?>
             </td>
             <td class="text-center">
-              <input type="number" name="skor[<?= $kpi['kpi_id'] ?>]" 
-                     class="form-control form-control-sm skor-output text-center fw-semibold" 
-                     value="<?= $ex ? number_format((float)$ex['skor'], 2, '.', '') : '' ?>" 
+              <input type="number" name="skor[<?= $kpi['kpi_id'] ?>]"
+                     class="form-control form-control-sm skor-output text-center fw-semibold"
+                     value="<?= $ex ? number_format((float)$ex['skor'], 2, '.', '') : '' ?>"
                      readonly style="background:#f8f9fa; font-size:12px;">
             </td>
             <td class="text-center">
-              <input type="number" name="nilai_kontribusi[<?= $kpi['kpi_id'] ?>]" 
-                     class="form-control form-control-sm kontribusi-output text-center fw-bold" 
-                     value="<?= $ex ? number_format((float)$ex['nilai_kontribusi'], 2, '.', '') : '' ?>" 
+              <input type="number"
+                     class="form-control form-control-sm nilai-output text-center fw-semibold"
+                     value="<?= $ex ? number_format((float)$ex['skor'], 2, '.', '') : '' ?>"
+                     readonly style="background:#f8f9fa; font-size:12px;"
+                     title="Nilai = Skor (identik, sesuai skema kriteria pencapaian)">
+            </td>
+            <td class="text-center fw-semibold" style="color:#1F4E79">
+              <?= round($bobot * 100, 1) ?>%
+            </td>
+            <td class="text-center">
+              <input type="number" name="nilai_kontribusi[<?= $kpi['kpi_id'] ?>]"
+                     class="form-control form-control-sm kontribusi-output text-center fw-bold"
+                     value="<?= $ex ? number_format((float)$ex['nilai_kontribusi'], 2, '.', '') : '' ?>"
                      readonly style="background:#eec; font-size:12px; color:#1F4E79;">
             </td>
             <td>
               <?php if (!$punyaTurunan): ?>
-              <input type="text" name="catatan[<?= $kpi['kpi_id'] ?>]" 
-                     class="form-control form-control-sm" 
+              <input type="text" name="catatan[<?= $kpi['kpi_id'] ?>]"
+                     class="form-control form-control-sm"
                      value="<?= esc($ex['catatan'] ?? '') ?>" placeholder="Opsional"
                      <?= $isRealisasiReadonly ? 'disabled' : '' ?>>
               <?php else: ?>
@@ -352,19 +423,40 @@ $isAdmin = (session()->get('role') === 'admin'); // Shortcut flag penentu Admin
                nested tepat di bawah baris Induknya pada tabel yang sama. -->
           <?php foreach ($listTurunan as $t): ?>
           <?php $exT = $realisasiTurunanExisting[$t['id']] ?? null; ?>
+          <?php
+            $tPolarity = $t['polarity'] ?? 'max';
+            $tTarget   = (float)$t['target'];
+            $pencapaianTDisplay = null;
+            if (in_array($tPolarity, ['max', 'min', 'precise'], true) && $exT && $exT['realisasi'] !== null && $tTarget > 0) {
+                $pRawT = $calc->hitungPencapaianPersen((float)$exT['realisasi'], $tTarget, $tPolarity === 'precise' ? 'max' : $tPolarity);
+                $pencapaianTDisplay = is_infinite($pRawT) ? '∞' : number_format($pRawT, 2) . '%';
+            } elseif ($tPolarity === 'special' && $exT && $exT['realisasi'] !== null) {
+                $pencapaianTDisplay = ((float)$exT['realisasi'] == 1.0) ? 'Ada' : 'Tidak Ada';
+            } elseif ($tPolarity === 'tertimbang' && $exT && $exT['realisasi'] !== null && ($exT['realisasi_harian'] ?? null) !== null) {
+                $skorIndikatorT = $calc->hitungSkorCapaian((float)$exT['realisasi'], $tTarget, 'max', true);
+                $pengkaliT      = $calc->hitungPengkaliHarian((float)$exT['realisasi_harian']);
+                $pencapaianTDisplay = number_format($skorIndikatorT, 1) . ' × ' . number_format($pengkaliT * 100, 0) . '%';
+            }
+            $tPolarityLabels = [
+                'max'        => ['↑ Max', '#375623'],
+                'min'        => ['↓ Min', '#C00000'],
+                'precise'    => ['◎ Precise', '#1F4E79'],
+                'special'    => ['⚑ Special', '#7F6000'],
+                'tertimbang' => ['⚖ Tertimbang', '#5C2A6B'],
+            ];
+            [$tPolarityLabel, $tPolarityColor] = $tPolarityLabels[$tPolarity] ?? ['—', '#888'];
+            $roAttrT = $isRealisasiReadonly ? 'readonly style="background:#f0f0f0;cursor:not-allowed"' : '';
+          ?>
           <tr class="turunan-row" style="background:#FAFBFC" data-parent-induk="<?= $kpi['kpi_id'] ?>">
             <td></td>
-            <td colspan="2" style="padding-left:32px">
+            <td style="padding-left:32px">
               <i class="ti ti-corner-down-right me-1" style="color:#aaa"></i>
               <span style="font-size:12px"><?= esc($t['nama_turunan']) ?></span>
               <small class="text-muted d-block" style="font-size:10px;margin-left:18px">
-                Bobot: <?= round((float)$t['bobot']*100, 2) ?>%
                 <?php if (!empty($t['satuan'])): ?>
-                  &nbsp;·&nbsp; Satuan: <strong><?= esc($t['satuan']) ?></strong>
+                  Satuan: <strong><?= esc($t['satuan']) ?></strong> &nbsp;·&nbsp;
                 <?php endif; ?>
-                &nbsp;·&nbsp; <span style="color:<?= ($t['polarity']??'max')==='max' ? '#375623' : '#C00000' ?>">
-                  <?= ($t['polarity']??'max')==='max' ? '↑ Max' : '↓ Min' ?>
-                </span>
+                <span style="color:<?= $tPolarityColor ?>"><?= $tPolarityLabel ?></span>
               </small>
               <?php if (!empty($t['deskripsi_target'])): ?>
               <div class="mt-1 d-flex align-items-start gap-1"
@@ -375,28 +467,84 @@ $isAdmin = (session()->get('role') === 'admin'); // Shortcut flag penentu Admin
               </div>
               <?php endif; ?>
             </td>
-            <td class="text-center text-muted" style="font-size:12px">
-              <?= number_format((float)$t['target'], 2) ?>
-            </td>
             <td class="text-center">
-              <input type="number"
-                     name="realisasi_turunan[<?= $kpi['id'] ?>][<?= $t['id'] ?>]"
-                     class="form-control form-control-sm realisasi-turunan-input"
-                     data-turunan-id="<?= $t['id'] ?>"
-                     data-induk-kpi="<?= $kpi['kpi_id'] ?>"
-                     data-induk-kp-id="<?= $kpi['id'] ?>"
-                     data-bobot-turunan="<?= (float)$t['bobot'] ?>"
-                     data-bobot-induk="<?= (float)$kpi['bobot'] ?>"
-                     value="<?= $exT ? number_format((float)$exT['realisasi'], 2, '.', '') : '' ?>"
-                     <?= $isRealisasiReadonly ? 'readonly style="background:#f0f0f0;cursor:not-allowed"' : '' ?>>
+              <?php if ($tPolarity === 'special'): ?>
+                <select name="realisasi_turunan[<?= $kpi['id'] ?>][<?= $t['id'] ?>]"
+                        class="form-select form-select-sm realisasi-turunan-input"
+                        data-turunan-id="<?= $t['id'] ?>"
+                        data-induk-kpi="<?= $kpi['kpi_id'] ?>"
+                        data-induk-kp-id="<?= $kpi['id'] ?>"
+                        data-bobot-turunan="<?= (float)$t['bobot'] ?>"
+                        data-bobot-induk="<?= (float)$kpi['bobot'] ?>"
+                        <?= $roAttrT ?>>
+                  <option value=""  <?= ($exT === null || $exT['realisasi'] === null) ? 'selected' : '' ?>>-- Pilih --</option>
+                  <option value="1" <?= ($exT && (float)$exT['realisasi'] == 1.0) ? 'selected' : '' ?>>Ada</option>
+                  <option value="0" <?= ($exT && (float)$exT['realisasi'] == 0.0) ? 'selected' : '' ?>>Tidak Ada</option>
+                </select>
+              <?php elseif ($tPolarity === 'tertimbang'): ?>
+                <div class="mb-1">
+                  <small class="text-muted" style="font-size:10px">Akhir</small>
+                  <input type="number"
+                         name="realisasi_turunan[<?= $kpi['id'] ?>][<?= $t['id'] ?>]"
+                         class="form-control form-control-sm realisasi-turunan-input"
+                         data-turunan-id="<?= $t['id'] ?>"
+                         data-induk-kpi="<?= $kpi['kpi_id'] ?>"
+                         data-induk-kp-id="<?= $kpi['id'] ?>"
+                         data-bobot-turunan="<?= (float)$t['bobot'] ?>"
+                         data-bobot-induk="<?= (float)$kpi['bobot'] ?>"
+                         value="<?= $exT ? number_format((float)$exT['realisasi'], 2, '.', '') : '' ?>" <?= $roAttrT ?>>
+                </div>
+                <div>
+                  <small class="text-muted" style="font-size:10px">Harian (%)</small>
+                  <div class="input-group input-group-sm">
+                    <input type="number"
+                           name="realisasi_turunan_harian[<?= $kpi['id'] ?>][<?= $t['id'] ?>]"
+                           class="form-control form-control-sm realisasi-turunan-harian-input"
+                           data-turunan-id="<?= $t['id'] ?>"
+                           data-induk-kpi="<?= $kpi['kpi_id'] ?>"
+                           value="<?= ($exT && isset($exT['realisasi_harian'])) ? $exT['realisasi_harian'] : '' ?>" <?= $roAttrT ?>>
+                    <span class="input-group-text" style="font-size:10px">%</span>
+                  </div>
+                </div>
+              <?php else: ?>
+                <input type="number"
+                       name="realisasi_turunan[<?= $kpi['id'] ?>][<?= $t['id'] ?>]"
+                       class="form-control form-control-sm realisasi-turunan-input"
+                       data-turunan-id="<?= $t['id'] ?>"
+                       data-induk-kpi="<?= $kpi['kpi_id'] ?>"
+                       data-induk-kp-id="<?= $kpi['id'] ?>"
+                       data-bobot-turunan="<?= (float)$t['bobot'] ?>"
+                       data-bobot-induk="<?= (float)$kpi['bobot'] ?>"
+                       value="<?= $exT ? number_format((float)$exT['realisasi'], 2, '.', '') : '' ?>" <?= $roAttrT ?>>
+              <?php endif; ?>
+            </td>
+            <td class="text-center text-muted" style="font-size:12px">
+              <?php if ($tPolarity === 'special'): ?>
+                <span title="Tidak berlaku untuk Special Scoring">—</span>
+              <?php elseif ($tPolarity === 'tertimbang'): ?>
+                <div><?= number_format($tTarget, 2) ?></div>
+                <div style="font-size:10px">(Harian: % langsung)</div>
+              <?php else: ?>
+                <?= number_format($tTarget, 2) ?>
+              <?php endif; ?>
+            </td>
+            <td class="text-center fw-semibold pencapaian-turunan-output" id="pencapaianT_<?= $t['id'] ?>" style="font-size:11px;color:#1F4E79">
+              <?= $pencapaianTDisplay ?? '' ?>
             </td>
             <td class="text-center" colspan="2">
-              <!-- Skor real-time per Turunan — diisi oleh JS via ajaxHitungTurunan -->
+              <!-- Skor & Nilai per Turunan identik — satu badge untuk keduanya.
+                   Diisi real-time oleh JS via ajaxHitungTurunan. -->
               <span class="skor-turunan-badge badge bg-secondary"
                     id="skorT_<?= $t['id'] ?>"
                     style="font-size:11px;display:<?= ($exT && $exT['skor']) ? 'inline' : 'none' ?>">
                 <?= $exT ? number_format((float)($exT['skor'] ?? 0), 2) : '' ?>
               </span>
+            </td>
+            <td class="text-center text-muted" style="font-size:12px">
+              <?= round((float)$t['bobot'] * 100, 2) ?>%
+            </td>
+            <td class="text-center fw-bold kontribusi-turunan-output" id="kontribT_<?= $t['id'] ?>" style="font-size:12px;color:#1F4E79">
+              <?= ($exT && isset($exT['nilai_kontribusi'])) ? number_format((float)$exT['nilai_kontribusi'], 4) : '' ?>
             </td>
             <td>
               <input type="text"
@@ -504,27 +652,41 @@ function updateCsrfHiddenInput(newHash) {
 }
 
 document.addEventListener('DOMContentLoaded', function() {
+    // Dipakai bersama oleh handler realisasi KPI utama maupun Parameter
+    // Turunan di bawah — sebelumnya hanya dideklarasikan lokal di dalam
+    // handler KPI utama, sehingga handler Turunan gagal (ReferenceError:
+    // pegawaiId is not defined) setiap kali diketik, dan preview Skor/
+    // Pencapaian Turunan tidak pernah tampil.
+    const pegawaiId = "<?= $pegawai['id'] ?>";
+
     const rows = document.querySelectorAll('.kpi-row');
 
     rows.forEach(row => {
-        const inputRealisasi = row.querySelector('.realisasi-input');
-        const outputSkor     = row.querySelector('.skor-output');
-        const outputKontrib  = row.querySelector('.kontribusi-output');
+        const inputRealisasi  = row.querySelector('.realisasi-input');
+        const inputHarian     = row.querySelector('.realisasi-harian-input');
+        const outputSkor      = row.querySelector('.skor-output');
+        const outputNilai     = row.querySelector('.nilai-output');
+        const outputKontrib   = row.querySelector('.kontribusi-output');
+        const outputPencapaian = row.querySelector('.pencapaian-output');
 
         if (!inputRealisasi) return;
 
-        inputRealisasi.addEventListener('input', function() {
-            const realisasi = this.value;
+        // Untuk polarity 'tertimbang', KEDUA indikator (Posisi Akhir & Rata-
+        // rata Harian) harus terisi sebelum preview dihitung — perubahan di
+        // salah satu input tetap harus membaca nilai TERKINI dari keduanya.
+        function hitungPreviewInduk() {
+            const realisasi = inputRealisasi.value;
             const kpiId     = row.getAttribute('data-kpi');
-            const pegawaiId = "<?= $pegawai['id'] ?>";
 
             if (realisasi === '') return;
+            if (inputHarian && inputHarian.value === '') return;
 
             let params = new URLSearchParams();
             params.append(csrfTokenName, csrfHashValue);
             params.append('kpi_id', kpiId);
             params.append('pegawai_id', pegawaiId);
             params.append('realisasi', realisasi);
+            if (inputHarian) params.append('realisasi_harian', inputHarian.value);
 
             fetch("<?= site_url('penilaian/ajaxHitung') ?>", {
                 method: "POST",
@@ -541,31 +703,70 @@ document.addEventListener('DOMContentLoaded', function() {
                 if (data.valid) {
                     // Paksa format 2 digit di belakang titik menggunakan toFixed(2)
                     outputSkor.value = parseFloat(data.skor).toFixed(2);
+                    outputNilai.value = parseFloat(data.nilai).toFixed(2); // Nilai = Skor (identik)
                     outputKontrib.value = parseFloat(data.kontribusi).toFixed(2);
+
+                    if (outputPencapaian) {
+                        if (data.pencapaian_tak_terhingga) {
+                            outputPencapaian.textContent = '∞';
+                        } else if (data.pencapaian !== null) {
+                            outputPencapaian.textContent = parseFloat(data.pencapaian).toFixed(2) + '%';
+                        } else {
+                            outputPencapaian.textContent = '';
+                        }
+                    }
                 }
             });
-        });
+        }
+
+        inputRealisasi.addEventListener('input', hitungPreviewInduk);
+        inputRealisasi.addEventListener('change', hitungPreviewInduk);
+        if (inputHarian) {
+            inputHarian.addEventListener('input', hitungPreviewInduk);
+            inputHarian.addEventListener('change', hitungPreviewInduk);
+        }
     });
 
     // ── Penanganan input Realisasi pada Parameter Turunan ──────────
     // Setiap perubahan Realisasi Turunan: panggil ajaxHitungTurunan
     // untuk mendapat skor individual Turunan tersebut, tampilkan di
     // badge inline, lalu hitung ulang Skor Induk sebagai rata-rata
-    // tertimbang (Cara B: ΣKontribusiT / BobotInduk).
-    document.querySelectorAll('.realisasi-turunan-input').forEach(function (input) {
-        input.addEventListener('input', function () {
-            const turunanId  = this.getAttribute('data-turunan-id');
-            const indukKpiId = this.getAttribute('data-induk-kpi');
-            const realisasiStr = this.value;
-            const realisasi     = parseFloat(realisasiStr);
+    // tertimbang (Cara B: ΣKontribusiT / BobotInduk). Untuk Turunan
+    // ber-polarity 'tertimbang', KEDUA indikator (Akhir & Harian) harus
+    // terisi sebelum preview dihitung — satu handler dipasang per Turunan
+    // (bukan per elemen input) supaya bisa membaca nilai TERKINI kedua
+    // field sekaligus, mana pun yang baru saja diketik.
+    const turunanIds = new Set();
+    document.querySelectorAll('.realisasi-turunan-input').forEach(function (el) {
+        turunanIds.add(el.getAttribute('data-turunan-id'));
+    });
 
-            const badge = document.getElementById('skorT_' + turunanId);
+    turunanIds.forEach(function (turunanId) {
+        const mainInput   = document.querySelector('.realisasi-turunan-input[data-turunan-id="' + turunanId + '"]');
+        const harianInput = document.querySelector('.realisasi-turunan-harian-input[data-turunan-id="' + turunanId + '"]');
+        if (!mainInput) return;
+
+        const indukKpiId     = mainInput.getAttribute('data-induk-kpi');
+        const badge          = document.getElementById('skorT_' + turunanId);
+        const pencapaianCell = document.getElementById('pencapaianT_' + turunanId);
+        const kontribCell    = document.getElementById('kontribT_' + turunanId);
+
+        function hitungPreviewTurunan() {
+            const realisasiStr = mainInput.value;
+            const realisasi     = parseFloat(realisasiStr);
+            const harianStr     = harianInput ? harianInput.value : null;
+            const realisasiHarian = harianInput ? parseFloat(harianStr) : null;
 
             // Hanya field yang benar-benar kosong yang tidak dihitung.
             // Realisasi = 0 yang sengaja diisi tetap valid (KPI 'min' bisa
             // memiliki capaian terbaik di angka 0).
-            if (realisasiStr === '' || isNaN(realisasi)) {
+            const mainKosong   = (realisasiStr === '' || isNaN(realisasi));
+            const harianKosong = harianInput && (harianStr === '' || isNaN(realisasiHarian));
+
+            if (mainKosong || harianKosong) {
                 if (badge) { badge.style.display = 'none'; badge.textContent = ''; }
+                if (pencapaianCell) pencapaianCell.textContent = '';
+                if (kontribCell)    kontribCell.textContent = '';
                 hitungUlangInduk(indukKpiId);
                 return;
             }
@@ -575,6 +776,7 @@ document.addEventListener('DOMContentLoaded', function() {
             params.append('turunan_id', turunanId);
             params.append('pegawai_id', pegawaiId);
             params.append('realisasi', realisasi);
+            if (harianInput) params.append('realisasi_harian', realisasiHarian);
 
             fetch("<?= site_url('penilaian/ajaxHitungTurunan') ?>", {
                 method: 'POST',
@@ -594,10 +796,29 @@ document.addEventListener('DOMContentLoaded', function() {
                     badge.setAttribute('data-skor-t',      data.skor);
                     badge.setAttribute('data-kontribusi-t', data.kontribusi_t);
                 }
+                if (data.valid && pencapaianCell) {
+                    if (data.pencapaian_tak_terhingga) {
+                        pencapaianCell.textContent = '∞';
+                    } else if (data.pencapaian !== null) {
+                        pencapaianCell.textContent = parseFloat(data.pencapaian).toFixed(2) + '%';
+                    } else {
+                        pencapaianCell.textContent = '';
+                    }
+                }
+                if (data.valid && kontribCell) {
+                    kontribCell.textContent = parseFloat(data.kontribusi_t).toFixed(4);
+                }
                 hitungUlangInduk(indukKpiId);
             })
             .catch(() => hitungUlangInduk(indukKpiId));
-        });
+        }
+
+        mainInput.addEventListener('input', hitungPreviewTurunan);
+        mainInput.addEventListener('change', hitungPreviewTurunan);
+        if (harianInput) {
+            harianInput.addEventListener('input', hitungPreviewTurunan);
+            harianInput.addEventListener('change', hitungPreviewTurunan);
+        }
     });
 
     // Hitung ulang Skor & Kontribusi Induk dari semua badge Turunan
@@ -606,16 +827,26 @@ document.addEventListener('DOMContentLoaded', function() {
         const indukRow = document.querySelector('.kpi-row[data-kpi="' + indukKpiId + '"]');
         if (!indukRow) return;
 
-        const outputSkor    = indukRow.querySelector('.skor-output');
-        const outputKontrib = indukRow.querySelector('.kontribusi-output');
-        const bobotInduk    = parseFloat(
+        const outputSkor      = indukRow.querySelector('.skor-output');
+        const outputNilai     = indukRow.querySelector('.nilai-output');
+        const outputKontrib   = indukRow.querySelector('.kontribusi-output');
+        const outputRealisasi = document.getElementById('realisasi_induk_' + indukKpiId);
+        const bobotInduk      = parseFloat(
             document.querySelector('.realisasi-turunan-input[data-induk-kpi="' + indukKpiId + '"]')
                 ?.getAttribute('data-bobot-induk') || 0
         );
 
-        // Kumpulkan semua kontribusi Turunan yang sudah dihitung
+        // Kumpulkan semua kontribusi Turunan yang sudah dihitung (badge,
+        // tergantung selesainya AJAX), sekaligus SUM Realisasi Turunan untuk
+        // field Realisasi Induk (readonly) — SUM Realisasi ini dihitung
+        // langsung dari nilai yang sedang diketik, TIDAK menunggu AJAX
+        // selesai, supaya terasa instan. Field ini sebelumnya tidak pernah
+        // ter-update sama sekali walau labelnya menjanjikan "otomatis
+        // terisi SUM ... real-time".
         let sumKontribusiT = 0;
-        let adaData = false;
+        let sumRealisasiT  = 0;
+        let adaKontribusi  = false;
+        let adaRealisasi   = false;
         document.querySelectorAll(
             '.realisasi-turunan-input[data-induk-kpi="' + indukKpiId + '"]'
         ).forEach(function (inp) {
@@ -623,21 +854,33 @@ document.addEventListener('DOMContentLoaded', function() {
             const badge = document.getElementById('skorT_' + tid);
             if (badge && badge.getAttribute('data-kontribusi-t')) {
                 sumKontribusiT += parseFloat(badge.getAttribute('data-kontribusi-t') || 0);
-                adaData = true;
+                adaKontribusi = true;
+            }
+            const rt = parseFloat(inp.value);
+            if (inp.value !== '' && !isNaN(rt)) {
+                sumRealisasiT += rt;
+                adaRealisasi = true;
             }
         });
 
-        if (!adaData || bobotInduk === 0) {
+        if (outputRealisasi) outputRealisasi.value = adaRealisasi ? sumRealisasiT.toFixed(2) : '';
+
+        if (!adaKontribusi || bobotInduk === 0) {
             if (outputSkor)    outputSkor.value    = '';
+            if (outputNilai)   outputNilai.value   = '';
             if (outputKontrib) outputKontrib.value = '';
             return;
         }
 
-        // Cara B: Skor_Induk = ΣKontribusiT / BobotInduk
-        const skorInduk    = Math.min(100, Math.max(10, sumKontribusiT / bobotInduk));
+        // Cara B: Skor_Induk = ΣKontribusiT / BobotInduk. Hanya di-cap ke
+        // atas (maks 4) — TIDAK di-floor ke 1, karena Turunan ber-polarity
+        // 'tertimbang' bisa sah menghasilkan Skor_T di bawah 1 (serendah
+        // 0,85), jadi rata-rata tertimbangnya pun boleh di bawah 1.
+        const skorInduk    = Math.min(4, sumKontribusiT / bobotInduk);
         const kontribInduk = skorInduk * bobotInduk;
 
         if (outputSkor)    outputSkor.value    = skorInduk.toFixed(2);
+        if (outputNilai)   outputNilai.value    = skorInduk.toFixed(2); // Nilai = Skor (identik)
         if (outputKontrib) outputKontrib.value = kontribInduk.toFixed(2);
     }
 });

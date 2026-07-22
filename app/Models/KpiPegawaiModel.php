@@ -28,7 +28,8 @@ class KpiPegawaiModel extends Model
                     k.nama_kpi, k.kode, k.satuan,
                     IFNULL(kp.target, k.target) as target,
                     kp.deskripsi_target,
-                    k.polarity, k.is_capped, k.perubahan_polarity, k.perspektif')
+                    k.polarity, k.is_capped, k.perubahan_polarity, k.perspektif,
+                    k.toleransi_skor4, k.toleransi_skor3, k.toleransi_skor2, k.sifat_khusus')
             ->join('kpi_unit k', 'k.id = kp.kpi_id')
             ->where('kp.pegawai_id', $pegawaiId)
             ->where('kp.is_active', 1)

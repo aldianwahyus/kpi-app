@@ -1,4 +1,5 @@
 <?php
+
 namespace App\Controllers;
 
 use App\Models\KpiMasterModel;
@@ -23,6 +24,82 @@ class MasterController extends BaseController
             header('Location: ' . base_url('dashboard'));
             exit;
         }
+    }
+
+    /**
+     * Aturan validasi & data tambahan untuk field yang bergantung pada
+     * Polarity yang dipilih di form KPI Unit — dipusatkan di sini karena
+     * dipakai identik oleh kpiUnitStore() maupun kpiUnitUpdate():
+     *   - max/min      : field 'Perubahan Polarity' (pos/neg), skema lama.
+     *   - precise      : 3 toleransi deviasi (%), harus menaik (Skor4 < Skor3 < Skor2).
+     *   - special      : dropdown 'Sifat' (maximize/minimize).
+     *   - tertimbang   : Target Indikator 2 (Rata-rata Harian), harus > 0.
+     */
+    private function buildKpiUnitPolarityRules(string $polarity): array
+    {
+        $rules    = [];
+        $messages = [];
+
+        if (in_array($polarity, ['max', 'min'], true)) {
+            $rules['perubahan_polarity']    = 'required|in_list[pos,neg]';
+            $messages['perubahan_polarity'] = ['required' => 'Perubahan polarity wajib dipilih.'];
+        } elseif ($polarity === 'precise') {
+            $rules['toleransi_skor4'] = 'required|numeric|greater_than[0]';
+            $rules['toleransi_skor3'] = 'required|numeric|greater_than[0]';
+            $rules['toleransi_skor2'] = 'required|numeric|greater_than[0]';
+            $messages['toleransi_skor4'] = ['required' => 'Toleransi Skor 4 wajib diisi.'];
+            $messages['toleransi_skor3'] = ['required' => 'Toleransi Skor 3 wajib diisi.'];
+            $messages['toleransi_skor2'] = ['required' => 'Toleransi Skor 2 wajib diisi.'];
+        } elseif ($polarity === 'special') {
+            $rules['sifat_khusus']    = 'required|in_list[maximize,minimize]';
+            $messages['sifat_khusus'] = ['required' => 'Sifat wajib dipilih.'];
+        }
+        // 'tertimbang' tidak butuh field tambahan di KPI Unit — Target
+        // Indikator 1 memakai Target KPI yang sudah ada, dan Rata-rata
+        // Harian (Indikator 2) dimasukkan langsung sebagai persentase saat
+        // penginputan penilaian, bukan konfigurasi per-KPI.
+
+        return [$rules, $messages];
+    }
+
+    /**
+     * Validasi tambahan yang tidak bisa diekspresikan lewat rule bawaan
+     * CodeIgniter (urutan menaik antar 3 toleransi Precise is Better).
+     * Mengembalikan pesan error jika tidak valid, atau null jika valid/
+     * tidak relevan (polarity selain 'precise').
+     */
+    private function validateToleransiPreciseAscending(string $polarity): ?string
+    {
+        if ($polarity !== 'precise') return null;
+
+        $t4 = (float)$this->request->getPost('toleransi_skor4');
+        $t3 = (float)$this->request->getPost('toleransi_skor3');
+        $t2 = (float)$this->request->getPost('toleransi_skor2');
+
+        if (!($t4 < $t3 && $t3 < $t2)) {
+            return 'Toleransi harus menaik: Toleransi Skor 4 < Toleransi Skor 3 < Toleransi Skor 2.';
+        }
+
+        return null;
+    }
+
+    /**
+     * Kumpulkan field polarity-dependent dari POST untuk disimpan —
+     * hanya field yang relevan dengan polarity terpilih yang diisi nilai
+     * asli dari POST, sisanya null (menghindari data basi tersimpan dari
+     * polarity sebelumnya jika Admin mengganti-ganti pilihan).
+     */
+    private function collectKpiUnitPolarityData(string $polarity): array
+    {
+        return [
+            'perubahan_polarity' => in_array($polarity, ['max', 'min'], true)
+                ? ($this->request->getPost('perubahan_polarity') ?? 'pos')
+                : 'pos',
+            'toleransi_skor4' => $polarity === 'precise' ? $this->request->getPost('toleransi_skor4') : null,
+            'toleransi_skor3' => $polarity === 'precise' ? $this->request->getPost('toleransi_skor3') : null,
+            'toleransi_skor2' => $polarity === 'precise' ? $this->request->getPost('toleransi_skor2') : null,
+            'sifat_khusus'    => $polarity === 'special' ? $this->request->getPost('sifat_khusus') : null,
+        ];
     }
 
     // ── Daftar KPI ──────────────────────────────────────────
@@ -55,55 +132,67 @@ class MasterController extends BaseController
     // ── Simpan Tambah ────────────────────────────────────────
     public function kpiStore()
     {
+        // 1. Aturan Validasi (Ditambahkan rule is_unique[kpi.kode])
         $rules = [
-            'nama_kpi'  => 'required|min_length[3]',
-            'kode'      => 'required|min_length[2]',
-            'perspektif'=> 'required',
-            'satuan'    => 'required',
-            'bobot'     => 'required|decimal',
-            'polarity'  => 'required|in_list[max,min]',
+            'nama_kpi'           => 'required|trim|min_length[3]',
+            'kode'               => 'required|trim|regex_match[/^\S+$/]|min_length[2]|is_unique[kpi.kode]',
+            'perspektif'         => 'required|trim',
+            'satuan'             => 'required|trim',
+            'bobot'              => 'required|decimal',
+            'polarity'           => 'required|in_list[max,min]',
             'perubahan_polarity' => 'required|in_list[pos,neg]',
         ];
 
-        if (!$this->validate($rules)) {
+        // 2. Pesan Error Custom
+        $messages = [
+            'kode' => [
+                'required'    => 'Kode KPI wajib diisi.',
+                'regex_match' => 'Kode KPI tidak boleh mengandung spasi atau whitespace.',
+                'min_length'  => 'Kode KPI minimal 2 karakter.',
+                'is_unique'   => 'Kode KPI sudah digunakan, silakan gunakan kode lain.'
+            ],
+            'nama_kpi' => [
+                'required'   => 'Nama KPI wajib diisi.',
+                'min_length' => 'Nama KPI minimal 3 karakter.'
+            ]
+        ];
+
+        // 3. Jalankan Validasi Form
+        if (!$this->validate($rules, $messages)) {
             return redirect()->back()
-                             ->withInput()
-                             ->with('errors', $this->validator->getErrors());
+                ->withInput()
+                ->with('errors', $this->validator->getErrors());
         }
 
-        $kode = strtoupper($this->request->getPost('kode'));
-        if ($this->kpiModel->isKodeExists($kode)) {
-            return redirect()->back()
-                             ->withInput()
-                             ->with('error', "Kode KPI '$kode' sudah digunakan.");
-        }
+        $kode = strtoupper(trim($this->request->getPost('kode')));
 
+        // 4. Simpan Data dengan Sanitasi Input
         $this->kpiModel->insert([
-            'perspektif'          => $this->request->getPost('perspektif'),
-            'nama_kpi'            => $this->request->getPost('nama_kpi'),
-            'kode'                => $kode,
-            'satuan'              => $this->request->getPost('satuan'),
-            'bobot'               => (float) $this->request->getPost('bobot'),
+            'perspektif'             => trim($this->request->getPost('perspektif')),
+            'nama_kpi'               => trim($this->request->getPost('nama_kpi')),
+            'kode'                   => $kode,
+            'satuan'                 => trim($this->request->getPost('satuan')),
+            'bobot'                  => (float) $this->request->getPost('bobot'),
             'total_bobot_perspektif' => $this->request->getPost('total_bobot_perspektif') ?: null,
-            'polarity'            => $this->request->getPost('polarity'),
-            'perubahan_polarity'  => $this->request->getPost('perubahan_polarity'),
-            'is_kualitatif'       => $this->request->getPost('is_kualitatif') ? 1 : 0,
-            'rubrik_sheet'        => $this->request->getPost('rubrik_sheet') ?: null,
-            'is_active'           => 1,
-            'urutan'              => (int) $this->request->getPost('urutan') ?: 99,
+            'polarity'               => $this->request->getPost('polarity'),
+            'perubahan_polarity'     => $this->request->getPost('perubahan_polarity'),
+            'is_kualitatif'          => $this->request->getPost('is_kualitatif') ? 1 : 0,
+            'rubrik_sheet'           => trim($this->request->getPost('rubrik_sheet') ?? '') ?: null,
+            'is_active'              => 1,
+            'urutan'                 => (int) $this->request->getPost('urutan') ?: 99,
         ]);
 
         return redirect()->to(base_url('master/kpi'))
-                         ->with('success', 'KPI berhasil ditambahkan.');
+            ->with('success', 'KPI berhasil ditambahkan.');
     }
 
     // ── Form Edit ────────────────────────────────────────────
-    public function kpiEdit(int $id): string
+    public function kpiEdit(int $id)
     {
         $kpi = $this->kpiModel->find($id);
         if (!$kpi) {
             return redirect()->to(base_url('master/kpi'))
-                             ->with('error', 'KPI tidak ditemukan.');
+                ->with('error', 'KPI tidak ditemukan.');
         }
 
         return view('layouts/main', [
@@ -118,45 +207,82 @@ class MasterController extends BaseController
     // ── Simpan Edit ──────────────────────────────────────────
     public function kpiUpdate(int $id)
     {
+        // 1. Pre-Sanitasi Data Input (Trim sebelum masuk engine validation)
+        $namaKpi    = trim($this->request->getPost('nama_kpi') ?? '');
+        $satuan     = trim($this->request->getPost('satuan') ?? '');
+        $kode       = trim($this->request->getPost('kode') ?? '');
+        $perspektif = trim($this->request->getPost('perspektif') ?? '');
+
+        // Timpa global POST agar $this->validate() membaca data yang sudah bersih dari spasi liar
+        $this->request->setGlobal('post', array_merge($this->request->getPost(), [
+            'nama_kpi'   => $namaKpi,
+            'satuan'     => $satuan,
+            'kode'       => $kode,
+            'perspektif' => $perspektif,
+        ]));
+
+        // 2. Aturan Validasi Form
         $rules = [
-            'nama_kpi'  => 'required|min_length[3]',
-            'kode'      => 'required|min_length[2]',
-            'perspektif'=> 'required',
-            'satuan'    => 'required',
-            'bobot'     => 'required|decimal',
-            'polarity'  => 'required|in_list[max,min]',
+            'nama_kpi'           => 'required|min_length[3]',
+            'kode'               => "required|regex_match[/^\S+$/]|min_length[2]|is_unique[kpi.kode,id,{$id}]",
+            'perspektif'         => 'required',
+            'satuan'             => 'required|min_length[1]',
+            'bobot'              => 'required|decimal',
+            'polarity'           => 'required|in_list[max,min]',
             'perubahan_polarity' => 'required|in_list[pos,neg]',
         ];
 
-        if (!$this->validate($rules)) {
+        // 3. Pesan Error Custom
+        $messages = [
+            'nama_kpi' => [
+                'required'   => 'Nama KPI wajib diisi (tidak boleh kosong atau hanya berupa spasi).',
+                'min_length' => 'Nama KPI minimal 3 karakter.'
+            ],
+            'satuan' => [
+                'required'   => 'Satuan KPI wajib diisi (tidak boleh kosong atau hanya berupa spasi).',
+                'min_length' => 'Satuan KPI minimal 1 karakter.'
+            ],
+            'kode' => [
+                'required'    => 'Kode KPI wajib diisi.',
+                'regex_match' => 'Kode KPI tidak boleh mengandung spasi atau whitespace.',
+                'min_length'  => 'Kode KPI minimal 2 karakter.',
+                'is_unique'   => 'Kode KPI sudah digunakan oleh data lain.'
+            ],
+            'perspektif' => [
+                'required' => 'Perspektif wajib dipilih.'
+            ],
+            'bobot' => [
+                'required' => 'Bobot KPI wajib diisi.',
+                'decimal'  => 'Bobot harus berupa angka desimal.'
+            ]
+        ];
+
+        // 4. Jalankan Validasi Form
+        if (!$this->validate($rules, $messages)) {
             return redirect()->back()
-                             ->withInput()
-                             ->with('errors', $this->validator->getErrors());
+                ->withInput()
+                ->with('errors', $this->validator->getErrors());
         }
 
-        $kode = strtoupper($this->request->getPost('kode'));
-        if ($this->kpiModel->isKodeExists($kode, $id)) {
-            return redirect()->back()
-                             ->withInput()
-                             ->with('error', "Kode KPI '$kode' sudah digunakan.");
-        }
+        $kodeUpper = strtoupper($kode);
 
+        // 5. Update Data (Menggunakan variabel yang sudah bersih)
         $this->kpiModel->update($id, [
-            'perspektif'          => $this->request->getPost('perspektif'),
-            'nama_kpi'            => $this->request->getPost('nama_kpi'),
-            'kode'                => $kode,
-            'satuan'              => $this->request->getPost('satuan'),
-            'bobot'               => (float) $this->request->getPost('bobot'),
+            'perspektif'             => $perspektif,
+            'nama_kpi'               => $namaKpi,
+            'kode'                   => $kodeUpper,
+            'satuan'                 => $satuan,
+            'bobot'                  => (float) $this->request->getPost('bobot'),
             'total_bobot_perspektif' => $this->request->getPost('total_bobot_perspektif') ?: null,
-            'polarity'            => $this->request->getPost('polarity'),
-            'perubahan_polarity'  => $this->request->getPost('perubahan_polarity'),
-            'is_kualitatif'       => $this->request->getPost('is_kualitatif') ? 1 : 0,
-            'rubrik_sheet'        => $this->request->getPost('rubrik_sheet') ?: null,
-            'urutan'              => (int) $this->request->getPost('urutan') ?: 99,
+            'polarity'               => $this->request->getPost('polarity'),
+            'perubahan_polarity'     => $this->request->getPost('perubahan_polarity'),
+            'is_kualitatif'          => $this->request->getPost('is_kualitatif') ? 1 : 0,
+            'rubrik_sheet'           => trim($this->request->getPost('rubrik_sheet') ?? '') ?: null,
+            'urutan'                 => (int) $this->request->getPost('urutan') ?: 99,
         ]);
 
         return redirect()->to(base_url('master/kpi'))
-                         ->with('success', 'KPI berhasil diupdate.');
+            ->with('success', 'KPI berhasil diupdate.');
     }
 
     // ── Toggle Aktif/Nonaktif ────────────────────────────────
@@ -169,7 +295,7 @@ class MasterController extends BaseController
             ]);
         }
         return redirect()->to(base_url('master/kpi'))
-                         ->with('success', 'Status KPI diubah.');
+            ->with('success', 'Status KPI diubah.');
     }
 
     // ── Hapus ────────────────────────────────────────────────
@@ -177,13 +303,13 @@ class MasterController extends BaseController
     {
         $this->kpiModel->delete($id);
         return redirect()->to(base_url('master/kpi'))
-                         ->with('success', 'KPI berhasil dihapus.');
+            ->with('success', 'KPI berhasil dihapus.');
     }
     // ── Halaman Kelola KPI per Divisi ────────────────────────
     public function kpiDivisi(): string
     {
         $divisiModel   = new \App\Models\DivisiModel();
-        $kpiDivisiModel= new \App\Models\KpiDivisiModel();
+        $kpiDivisiModel = new \App\Models\KpiDivisiModel();
 
         $divisiList = $divisiModel->getActive();
 
@@ -263,10 +389,12 @@ class MasterController extends BaseController
         $totalBobot = array_sum($bobots);
         if (round($totalBobot, 2) != 1.00) {
             return redirect()->back()
-                            ->withInput()
-                            ->with('error',
-                                'Total bobot harus = 100%. '
-                                . 'Saat ini: ' . round($totalBobot * 100, 2) . '%');
+                ->withInput()
+                ->with(
+                    'error',
+                    'Total bobot harus = 100%. '
+                        . 'Saat ini: ' . round($totalBobot * 100, 2) . '%'
+                );
         }
 
         // Hapus semua assignment lama lalu insert baru
@@ -287,7 +415,7 @@ class MasterController extends BaseController
         }
 
         return redirect()->to(base_url('master/kpi-divisi'))
-                        ->with('success', 'KPI Divisi berhasil disimpan.');
+            ->with('success', 'KPI Divisi berhasil disimpan.');
     }
 
     // ── Hapus satu KPI dari Divisi ───────────────────────────
@@ -298,13 +426,13 @@ class MasterController extends BaseController
 
         if (!$row) {
             return redirect()->to(base_url('master/kpi-divisi'))
-                            ->with('error', 'Data KPI Divisi tidak ditemukan atau sudah dihapus.');
+                ->with('error', 'Data KPI Divisi tidak ditemukan atau sudah dihapus.');
         }
 
         $kpiDivisiModel->delete($id);
 
         return redirect()->to(base_url("master/kpi-divisi/edit/{$row['divisi_id']}"))
-                        ->with('success', 'KPI berhasil dihapus dari divisi.');
+            ->with('success', 'KPI berhasil dihapus dari divisi.');
     }
     // ── Tambah satu KPI ke Divisi (dari kolom kanan) ─────────
     public function kpiDivisiAdd(int $divisiId)
@@ -315,12 +443,12 @@ class MasterController extends BaseController
 
         if ($kpiId <= 0) {
             return redirect()->back()
-                            ->with('error', 'KPI yang dipilih tidak valid.');
+                ->with('error', 'KPI yang dipilih tidak valid.');
         }
 
         if ($kpiDivisiModel->isAssigned($divisiId, $kpiId)) {
             return redirect()->back()
-                            ->with('error', 'KPI sudah ada di divisi ini.');
+                ->with('error', 'KPI sudah ada di divisi ini.');
         }
 
         $kpiDivisiModel->insert([
@@ -332,7 +460,7 @@ class MasterController extends BaseController
         ]);
 
         return redirect()->back()
-                        ->with('success', 'KPI berhasil ditambahkan ke divisi.');
+            ->with('success', 'KPI berhasil ditambahkan ke divisi.');
     }
 
     // ══ DIREKTORAT ══════════════════════════════════════════
@@ -372,35 +500,72 @@ class MasterController extends BaseController
 
     public function direktoratStore()
     {
-        if (!$this->validate([
-            'kode' => 'required',
-            'nama' => 'required',
-        ])) {
-            return redirect()->back()->withInput()
-                            ->with('errors', $this->validator->getErrors());
+        // 1. Pre-Sanitasi Input Text (trim spasi di awal & akhir)
+        $kode      = trim($this->request->getPost('kode') ?? '');
+        $nama      = trim($this->request->getPost('nama') ?? '');
+        $singkatan = trim($this->request->getPost('singkatan') ?? '');
+        $deskripsi = trim($this->request->getPost('deskripsi') ?? '');
+
+        // Overwrite payload global post agar $this->validate() membaca data yang sudah bersih
+        $this->request->setGlobal('post', array_merge($this->request->getPost(), [
+            'kode'      => $kode,
+            'nama'      => $nama,
+            'singkatan' => $singkatan,
+            'deskripsi' => $deskripsi,
+        ]));
+
+        // 2. Aturan Validasi
+        $rules = [
+            'kode'      => 'required|regex_match[/^\S+$/]|is_unique[direktorat.kode]',
+            'nama'      => 'required|min_length[3]',
+            'singkatan' => 'permit_empty|min_length[2]',
+        ];
+
+        // 3. Pesan Error Custom
+        $messages = [
+            'kode' => [
+                'required'    => 'Kode direktorat wajib diisi.',
+                'regex_match' => 'Kode direktorat tidak boleh mengandung spasi atau whitespace.',
+                'is_unique'   => 'Kode direktorat sudah digunakan, gunakan kode lain.'
+            ],
+            'nama' => [
+                'required'   => 'Nama direktorat wajib diisi (tidak boleh kosong atau hanya berupa spasi).',
+                'min_length' => 'Nama direktorat minimal 3 karakter.'
+            ],
+            'singkatan' => [
+                'min_length' => 'Singkatan minimal 2 karakter.'
+            ]
+        ];
+
+        // 4. Jalankan Validasi
+        if (!$this->validate($rules, $messages)) {
+            return redirect()->back()
+                ->withInput()
+                ->with('errors', $this->validator->getErrors());
         }
 
+        // 5. Simpan ke Database
         $m = new \App\Models\DirektoratModel();
         $m->insert([
-            'kode'      => strtoupper($this->request->getPost('kode')),
-            'nama'      => $this->request->getPost('nama'),
-            'singkatan' => $this->request->getPost('singkatan'),
-            'deskripsi' => $this->request->getPost('deskripsi'),
+            'kode'      => strtoupper($kode),
+            'nama'      => $nama,
+            'singkatan' => $singkatan ?: null,
+            'deskripsi' => $deskripsi ?: null,
             'is_active' => 1,
         ]);
 
         return redirect()->to(base_url('master/direktorat'))
-                        ->with('success', 'Direktorat berhasil ditambahkan.');
+            ->with('success', 'Direktorat berhasil ditambahkan.');
     }
 
-    public function direktoratEdit(int $id): string
+    public function direktoratEdit(int $id)
     {
         $m   = new \App\Models\DirektoratModel();
         $dir = $m->find($id);
 
         if (!$dir) {
             return redirect()->to(base_url('master/direktorat'))
-                            ->with('error', 'Direktorat tidak ditemukan.');
+                ->with('error', 'Direktorat tidak ditemukan.');
         }
 
         return view('layouts/main', [
@@ -414,20 +579,65 @@ class MasterController extends BaseController
 
     public function direktoratUpdate(int $id)
     {
+        // 1. Pre-Sanitasi Input Text (trim spasi di awal & akhir)
+        $kode      = trim($this->request->getPost('kode') ?? '');
+        $nama      = trim($this->request->getPost('nama') ?? '');
+        $singkatan = trim($this->request->getPost('singkatan') ?? '');
+        $deskripsi = trim($this->request->getPost('deskripsi') ?? '');
+
+        // Overwrite payload global post agar $this->validate() membaca data yang sudah bersih
+        $this->request->setGlobal('post', array_merge($this->request->getPost(), [
+            'kode'      => $kode,
+            'nama'      => $nama,
+            'singkatan' => $singkatan,
+            'deskripsi' => $deskripsi,
+        ]));
+
+        // 2. Aturan Validasi (Mengabaikan ID yang sedang di-update pada is_unique)
+        $rules = [
+            'kode'      => "required|regex_match[/^\S+$/]|is_unique[direktorat.kode,id,{$id}]",
+            'nama'      => 'required|min_length[3]',
+            'singkatan' => 'permit_empty|min_length[2]',
+        ];
+
+        // 3. Pesan Error Custom
+        $messages = [
+            'kode' => [
+                'required'    => 'Kode direktorat wajib diisi.',
+                'regex_match' => 'Kode direktorat tidak boleh mengandung spasi atau whitespace.',
+                'is_unique'   => 'Kode direktorat sudah digunakan oleh data lain.'
+            ],
+            'nama' => [
+                'required'   => 'Nama direktorat wajib diisi (tidak boleh kosong atau hanya berupa spasi).',
+                'min_length' => 'Nama direktorat minimal 3 karakter.'
+            ],
+            'singkatan' => [
+                'min_length' => 'Singkatan minimal 2 karakter.'
+            ]
+        ];
+
+        // 4. Jalankan Validasi
+        if (!$this->validate($rules, $messages)) {
+            return redirect()->back()
+                ->withInput()
+                ->with('errors', $this->validator->getErrors());
+        }
+
+        // 5. Update Database
         $m = new \App\Models\DirektoratModel();
         $m->update($id, [
-            'kode'      => strtoupper($this->request->getPost('kode')),
-            'nama'      => $this->request->getPost('nama'),
-            'singkatan' => $this->request->getPost('singkatan'),
-            'deskripsi' => $this->request->getPost('deskripsi'),
+            'kode'      => strtoupper($kode),
+            'nama'      => $nama,
+            'singkatan' => $singkatan ?: null,
+            'deskripsi' => $deskripsi ?: null,
         ]);
 
         return redirect()->to(base_url('master/direktorat'))
-                        ->with('success', 'Direktorat berhasil diupdate.');
+            ->with('success', 'Direktorat berhasil diupdate.');
     }
 
     // ══ KPI UNIT per DIREKTORAT ══════════════════════════════
-    public function kpiUnit(int $direktoratId): string
+    public function kpiUnit(int $direktoratId)
     {
         $direktoratModel = new \App\Models\DirektoratModel();
         $kpiUnitModel    = new \App\Models\KpiUnitModel();
@@ -436,7 +646,7 @@ class MasterController extends BaseController
 
         if (!$direktorat) {
             return redirect()->to(base_url('master/direktorat'))
-                            ->with('error', 'Direktorat tidak ditemukan.');
+                ->with('error', 'Direktorat tidak ditemukan.');
         }
 
         $grouped    = $kpiUnitModel->getGroupedPerspektif($direktoratId);
@@ -452,14 +662,14 @@ class MasterController extends BaseController
         ]);
     }
 
-    public function kpiUnitCreate(int $direktoratId): string
+    public function kpiUnitCreate(int $direktoratId)
     {
         $direktoratModel = new \App\Models\DirektoratModel();
         $direktorat      = $direktoratModel->find($direktoratId);
 
         if (!$direktorat) {
             return redirect()->to(base_url('master/direktorat'))
-                            ->with('error', 'Direktorat tidak ditemukan.');
+                ->with('error', 'Direktorat tidak ditemukan.');
         }
 
         return view('layouts/main', [
@@ -537,85 +747,142 @@ class MasterController extends BaseController
         return $this->response->setJSON([
             'kode'     => $kode,
             'preview'  => "Kode yang akan digunakan: <strong>$kode</strong>",
-            'csrf_hash'=> csrf_hash(),
+            'csrf_hash' => csrf_hash(),
         ]);
     }
 
     public function kpiUnitStore(int $direktoratId)
     {
-        if (!$this->validate([
-            'nama_kpi'   => 'required',
+        // 1. Pre-Sanitasi Input Text (trim spasi di awal & akhir)
+        $namaKpi    = trim($this->request->getPost('nama_kpi') ?? '');
+        $satuan     = trim($this->request->getPost('satuan') ?? '');
+        $kodeInput  = trim($this->request->getPost('kode') ?? '');
+        $perspektif = trim($this->request->getPost('perspektif') ?? '');
+
+        // Overwrite payload POST agar $this->validate() membaca data yang sudah bersih
+        $this->request->setGlobal('post', array_merge($this->request->getPost(), [
+            'nama_kpi'   => $namaKpi,
+            'satuan'     => $satuan,
+            'kode'       => $kodeInput,
+            'perspektif' => $perspektif,
+        ]));
+
+        $polarity = $this->request->getPost('polarity') ?? 'max';
+
+        // 2. Aturan Validasi Form
+        $rules = [
+            'nama_kpi'   => 'required|min_length[3]',
             'perspektif' => 'required',
-            'satuan'     => 'required',
-        ])) {
+            'satuan'     => 'required|min_length[1]',
+            'kode'       => 'permit_empty|regex_match[/^\S+$/]|is_unique[kpi_unit.kode]',
+            'polarity'   => 'required|in_list[max,min,precise,special,tertimbang]',
+        ];
+
+        // 3. Pesan Error Custom
+        $messages = [
+            'nama_kpi' => [
+                'required'   => 'Nama KPI wajib diisi (tidak boleh kosong atau hanya berupa spasi).',
+                'min_length' => 'Nama KPI minimal 3 karakter.'
+            ],
+            'satuan' => [
+                'required'   => 'Satuan KPI wajib diisi (tidak boleh kosong atau hanya berupa spasi).',
+                'min_length' => 'Satuan KPI minimal 1 karakter.'
+            ],
+            'perspektif' => [
+                'required' => 'Perspektif wajib dipilih.'
+            ],
+            'kode' => [
+                'regex_match' => 'Kode KPI tidak boleh mengandung spasi atau whitespace.',
+                'is_unique'   => 'Kode KPI sudah digunakan oleh data lain.'
+            ],
+            'polarity' => [
+                'required' => 'Polarity wajib dipilih.'
+            ],
+        ];
+
+        // Field tambahan bergantung pada Polarity yang dipilih (toleransi
+        // Precise is Better / Sifat Special Scoring / Target Harian Tertimbang
+        // / Perubahan Polarity lama untuk max & min).
+        [$polarityRules, $polarityMessages] = $this->buildKpiUnitPolarityRules($polarity);
+        $rules    = array_merge($rules, $polarityRules);
+        $messages = array_merge($messages, $polarityMessages);
+
+        // 4. Jalankan Validasi
+        if (!$this->validate($rules, $messages)) {
             return redirect()->back()->withInput()
-                            ->with('errors', $this->validator->getErrors());
+                ->with('errors', $this->validator->getErrors());
         }
 
-        $m           = new \App\Models\KpiUnitModel();
-        $perspektif  = $this->request->getPost('perspektif');
-        $kodeForm    = strtoupper(trim($this->request->getPost('kode') ?? ''));
+        if ($errPrecise = $this->validateToleransiPreciseAscending($polarity)) {
+            return redirect()->back()->withInput()->with('errors', [$errPrecise]);
+        }
 
-        // Jika kode dari form kosong atau tidak valid (JS dimatikan),
-        // generate ulang di sisi server menggunakan logika yang sama
-        // dengan kpiUnitGenerateKode() untuk konsistensi.
+        $m        = new \App\Models\KpiUnitModel();
+        $kodeForm = strtoupper($kodeInput);
+
+        // 5. Generate Kode Otomatis Jika Kode Kosong
         if (empty($kodeForm)) {
             $direktoratModel = new \App\Models\DirektoratModel();
             $direktorat      = $direktoratModel->find($direktoratId);
             $singkatan       = strtoupper(trim($direktorat['singkatan'] ?? ''));
+
             if (empty($singkatan) || strlen($singkatan) > 8) {
                 $words     = explode(' ', $direktorat['nama']);
                 $singkatan = strtoupper(implode('', array_map(fn($w) => substr(trim($w), 0, 1), array_filter($words))));
                 $singkatan = substr($singkatan, 0, 4);
             }
-            $prefixMap  = ['Financial'=>'F','Customer'=>'C','Internal Process'=>'IP','Learning & Growth'=>'LG'];
-            $prefix     = $prefixMap[$perspektif] ?? strtoupper(substr($perspektif, 0, 2));
-            $pattern    = $singkatan . '-' . $prefix;
-            $existing   = $m->db->table('kpi_unit')->select('kode')
-                            ->like('kode', $pattern, 'after')
-                            ->where('direktorat_id', $direktoratId)->get()->getResultArray();
+
+            $prefixMap = ['Financial' => 'F', 'Customer' => 'C', 'Internal Process' => 'IP', 'Learning & Growth' => 'LG'];
+            $prefix    = $prefixMap[$perspektif] ?? strtoupper(substr($perspektif, 0, 2));
+            $pattern   = $singkatan . '-' . $prefix;
+
+            $existing  = $m->db->table('kpi_unit')->select('kode')
+                ->like('kode', $pattern, 'after')
+                ->where('direktorat_id', $direktoratId)->get()->getResultArray();
+
             $usedNumbers = [];
             foreach ($existing as $row) {
                 if (preg_match('/^' . preg_quote($pattern, '/') . '(\d+)$/', $row['kode'], $mx)) {
                     $usedNumbers[] = (int)$mx[1];
                 }
             }
+
             $nextNum = 1;
             while (in_array($nextNum, $usedNumbers)) $nextNum++;
             $kodeForm = $pattern . $nextNum;
+
+            // Double check untuk kode hasil auto-generate jika ada race condition
+            if ($m->where('kode', $kodeForm)->countAllResults() > 0) {
+                return redirect()->back()->withInput()
+                    ->with('error', "Kode auto-generate '$kodeForm' bentrok. Silakan coba simpan kembali.");
+            }
         }
 
-        // Cek kode duplikat (keamanan: validasi tetap di server)
-        if ($m->where('kode', $kodeForm)->countAllResults() > 0) {
-            return redirect()->back()->withInput()
-                            ->with('error', "Kode '$kodeForm' sudah digunakan. Silakan muat ulang form untuk mendapatkan kode baru.");
-        }
-
-        $m->insert([
-            'direktorat_id'      => $direktoratId,
-            'perspektif'         => $perspektif,
-            'nama_kpi'           => $this->request->getPost('nama_kpi'),
-            'kode'               => $kodeForm,
-            'satuan'             => $this->request->getPost('satuan'),
-            'bobot'              => 0,
-            'polarity'           => $this->request->getPost('polarity') ?? 'max',
-            'perubahan_polarity' => $this->request->getPost('perubahan_polarity') ?? 'pos',
-            'urutan'             => (int)$this->request->getPost('urutan') ?: 99,
-            'is_active'          => 1,
-        ]);
+        // 6. Simpan Data
+        $m->insert(array_merge([
+            'direktorat_id' => $direktoratId,
+            'perspektif'    => $perspektif,
+            'nama_kpi'      => $namaKpi,
+            'kode'          => $kodeForm,
+            'satuan'        => $satuan,
+            'bobot'         => 0,
+            'polarity'      => $polarity,
+            'urutan'        => (int)$this->request->getPost('urutan') ?: 99,
+            'is_active'     => 1,
+        ], $this->collectKpiUnitPolarityData($polarity)));
 
         return redirect()->to(base_url("master/kpi-unit/$direktoratId"))
-                        ->with('success', 'KPI Unit berhasil ditambahkan.');
+            ->with('success', 'KPI Unit berhasil ditambahkan.');
     }
 
-    public function kpiUnitEdit(int $id): string
+    public function kpiUnitEdit(int $id)
     {
         $m   = new \App\Models\KpiUnitModel();
         $kpi = $m->find($id);
 
         if (!$kpi) {
             return redirect()->to(base_url('master/direktorat'))
-                            ->with('error', 'KPI Unit tidak ditemukan.');
+                ->with('error', 'KPI Unit tidak ditemukan.');
         }
 
         $direktoratModel = new \App\Models\DirektoratModel();
@@ -637,22 +904,86 @@ class MasterController extends BaseController
 
         if (!$kpi) {
             return redirect()->to(base_url('master/direktorat'))
-                            ->with('error', 'KPI Unit tidak ditemukan.');
+                ->with('error', 'KPI Unit tidak ditemukan.');
         }
 
-        $m->update($id, [
-            'perspektif'         => $this->request->getPost('perspektif'),
-            'nama_kpi'           => $this->request->getPost('nama_kpi'),
-            'kode'               => strtoupper($this->request->getPost('kode')),
-            'satuan'             => $this->request->getPost('satuan'),
-            'bobot'              => 0,
-            'polarity'           => $this->request->getPost('polarity'),
-            'perubahan_polarity' => $this->request->getPost('perubahan_polarity'),
-            'urutan'             => (int)$this->request->getPost('urutan') ?: 99,
-        ]);
+        // 1. Pre-Sanitasi Input Text (potong spasi di awal & akhir)
+        $namaKpi    = trim($this->request->getPost('nama_kpi') ?? '');
+        $satuan     = trim($this->request->getPost('satuan') ?? '');
+        $kode       = trim($this->request->getPost('kode') ?? '');
+        $perspektif = trim($this->request->getPost('perspektif') ?? '');
+
+        // Overwrite payload global post dengan data yang sudah di-trim
+        $this->request->setGlobal('post', array_merge($this->request->getPost(), [
+            'nama_kpi'   => $namaKpi,
+            'satuan'     => $satuan,
+            'kode'       => $kode,
+            'perspektif' => $perspektif,
+        ]));
+
+        $polarity = $this->request->getPost('polarity') ?? 'max';
+
+        // 2. Aturan Validasi Form
+        $rules = [
+            'nama_kpi'   => 'required|min_length[3]',
+            'kode'       => "required|regex_match[/^\S+$/]|min_length[2]|is_unique[kpi_unit.kode,id,{$id}]",
+            'perspektif' => 'required',
+            'satuan'     => 'required|min_length[1]',
+            'polarity'   => 'required|in_list[max,min,precise,special,tertimbang]',
+        ];
+
+        // 3. Pesan Error Custom
+        $messages = [
+            'nama_kpi' => [
+                'required'   => 'Nama KPI wajib diisi (tidak boleh kosong atau hanya berupa spasi).',
+                'min_length' => 'Nama KPI minimal 3 karakter.'
+            ],
+            'satuan' => [
+                'required'   => 'Satuan KPI wajib diisi (tidak boleh kosong atau hanya berupa spasi).',
+                'min_length' => 'Satuan KPI minimal 1 karakter.'
+            ],
+            'kode' => [
+                'required'    => 'Kode KPI wajib diisi.',
+                'regex_match' => 'Kode KPI tidak boleh mengandung spasi atau whitespace.',
+                'min_length'  => 'Kode KPI minimal 2 karakter.',
+                'is_unique'   => 'Kode KPI sudah digunakan oleh data lain.'
+            ],
+            'perspektif' => [
+                'required' => 'Perspektif wajib dipilih.'
+            ],
+            'polarity' => [
+                'required' => 'Polarity wajib dipilih.'
+            ],
+        ];
+
+        [$polarityRules, $polarityMessages] = $this->buildKpiUnitPolarityRules($polarity);
+        $rules    = array_merge($rules, $polarityRules);
+        $messages = array_merge($messages, $polarityMessages);
+
+        // 4. Jalankan Validasi
+        if (!$this->validate($rules, $messages)) {
+            return redirect()->back()
+                ->withInput()
+                ->with('errors', $this->validator->getErrors());
+        }
+
+        if ($errPrecise = $this->validateToleransiPreciseAscending($polarity)) {
+            return redirect()->back()->withInput()->with('errors', [$errPrecise]);
+        }
+
+        // 5. Update Data
+        $m->update($id, array_merge([
+            'perspektif' => $perspektif,
+            'nama_kpi'   => $namaKpi,
+            'kode'       => strtoupper($kode),
+            'satuan'     => $satuan,
+            'bobot'      => 0,
+            'polarity'   => $polarity,
+            'urutan'     => (int)$this->request->getPost('urutan') ?: 99,
+        ], $this->collectKpiUnitPolarityData($polarity)));
 
         return redirect()->to(base_url("master/kpi-unit/{$kpi['direktorat_id']}"))
-                        ->with('success', 'KPI Unit berhasil diupdate.');
+            ->with('success', 'KPI Unit berhasil diupdate.');
     }
 
     public function kpiUnitDelete(int $id)
@@ -662,17 +993,17 @@ class MasterController extends BaseController
 
         if (!$kpi) {
             return redirect()->to(base_url('master/direktorat'))
-                            ->with('error', 'KPI Unit tidak ditemukan atau sudah dihapus.');
+                ->with('error', 'KPI Unit tidak ditemukan atau sudah dihapus.');
         }
 
         $m->delete($id);
 
         return redirect()->to(base_url("master/kpi-unit/{$kpi['direktorat_id']}"))
-                        ->with('success', 'KPI Unit berhasil dihapus.');
+            ->with('success', 'KPI Unit berhasil dihapus.');
     }
 
     // ── Tampilkan form Import KPI Unit ────────────────────────
-    public function kpiUnitImportForm(int $direktoratId): string
+    public function kpiUnitImportForm(int $direktoratId)
     {
         $direktoratModel = new \App\Models\DirektoratModel();
         $direktorat      = $direktoratModel->find($direktoratId);
@@ -772,7 +1103,7 @@ class MasterController extends BaseController
         }
 
         $perspektifValid = ['Financial', 'Customer', 'Internal Process', 'Learning & Growth'];
-        $prefixMap       = ['Financial'=>'F','Customer'=>'C','Internal Process'=>'IP','Learning & Growth'=>'LG'];
+        $prefixMap       = ['Financial' => 'F', 'Customer' => 'C', 'Internal Process' => 'IP', 'Learning & Growth' => 'LG'];
 
         $singkatan = strtoupper(trim($direktorat['singkatan'] ?? ''));
         if (empty($singkatan) || strlen($singkatan) > 8) {
@@ -822,8 +1153,8 @@ class MasterController extends BaseController
             $prefix   = $prefixMap[$perspektif];
             $pattern  = $singkatan . '-' . $prefix;
             $existing = $m->db->table('kpi_unit')->select('kode')
-                            ->like('kode', $pattern, 'after')
-                            ->where('direktorat_id', $direktoratId)->get()->getResultArray();
+                ->like('kode', $pattern, 'after')
+                ->where('direktorat_id', $direktoratId)->get()->getResultArray();
             $usedNumbers = [];
             foreach ($existing as $r2) {
                 if (preg_match('/^' . preg_quote($pattern, '/') . '(\d+)$/', $r2['kode'], $mx)) {
@@ -887,37 +1218,58 @@ class MasterController extends BaseController
 
     public function unitKerjaStore()
     {
-        if (!$this->validate([
-            'kode'          => 'required',
+        // 1. Aturan Validasi
+        $rules = [
+            'kode'          => 'required|regex_match[/^\S+$/]|is_unique[divisi.kode]',
             'nama'          => 'required',
             'direktorat_id' => 'required',
-        ])) {
-            return redirect()->back()->withInput()
-                            ->with('errors', $this->validator->getErrors());
+        ];
+
+        // 2. Pesan Error Custom
+        $messages = [
+            'kode' => [
+                'required'    => 'Kode unit kerja wajib diisi.',
+                'regex_match' => 'Kode unit kerja tidak boleh mengandung spasi atau whitespace.',
+                'is_unique'   => 'Kode unit kerja sudah digunakan, gunakan kode lain.'
+            ],
+            'nama' => [
+                'required' => 'Nama unit kerja wajib diisi.'
+            ],
+            'direktorat_id' => [
+                'required' => 'Silakan pilih direktorat terlebih dahulu.'
+            ]
+        ];
+
+        // 3. Jalankan Validasi
+        if (!$this->validate($rules, $messages)) {
+            return redirect()->back()
+                ->withInput()
+                ->with('errors', $this->validator->getErrors());
         }
 
-        $m = new \App\Models\DivisiModel();
+        // 4. Simpan ke Database dengan Sanitasi trim()
+        $m = new DivisiModel();
         $m->insert([
-            'kode'          => strtoupper($this->request->getPost('kode')),
-            'nama'          => $this->request->getPost('nama'),
+            'kode'          => strtoupper(trim($this->request->getPost('kode'))),
+            'nama'          => trim($this->request->getPost('nama')),
             'direktorat_id' => $this->request->getPost('direktorat_id'),
-            'deskripsi'     => $this->request->getPost('deskripsi'),
-            'kepala_divisi' => $this->request->getPost('kepala_divisi'),
+            'deskripsi'     => trim($this->request->getPost('deskripsi') ?? ''),
+            'kepala_divisi' => trim($this->request->getPost('kepala_divisi') ?? ''),
             'is_active'     => 1,
         ]);
 
         return redirect()->to(base_url('master/unit-kerja'))
-                        ->with('success', 'Unit kerja berhasil ditambahkan.');
+            ->with('success', 'Unit kerja berhasil ditambahkan.');
     }
 
-    public function unitKerjaEdit(int $id): string
+    public function unitKerjaEdit(int $id)
     {
         $m = new \App\Models\DivisiModel();
         $divisi = $m->find($id);
 
         if (!$divisi) {
             return redirect()->to(base_url('master/unit-kerja'))
-                            ->with('error', 'Unit kerja tidak ditemukan.');
+                ->with('error', 'Unit kerja tidak ditemukan.');
         }
 
         $direktoratModel = new \App\Models\DirektoratModel();
@@ -934,17 +1286,47 @@ class MasterController extends BaseController
 
     public function unitKerjaUpdate(int $id)
     {
-        $m = new \App\Models\DivisiModel();
+        // 1. Aturan Validasi (Mengabaikan ID yang sedang di-update pada is_unique)
+        $rules = [
+            'kode'          => "required|regex_match[/^\S+$/]|is_unique[divisi.kode,id,{$id}]",
+            'nama'          => 'required',
+            'direktorat_id' => 'required',
+        ];
+
+        // 2. Pesan Error Custom
+        $messages = [
+            'kode' => [
+                'required'    => 'Kode unit kerja wajib diisi.',
+                'regex_match' => 'Kode unit kerja tidak boleh mengandung spasi atau whitespace.',
+                'is_unique'   => 'Kode unit kerja sudah digunakan oleh data lain.'
+            ],
+            'nama' => [
+                'required' => 'Nama unit kerja wajib diisi.'
+            ],
+            'direktorat_id' => [
+                'required' => 'Silakan pilih direktorat terlebih dahulu.'
+            ]
+        ];
+
+        // 3. Jalankan Validasi
+        if (!$this->validate($rules, $messages)) {
+            return redirect()->back()
+                ->withInput()
+                ->with('errors', $this->validator->getErrors());
+        }
+
+        // 4. Update Database dengan Sanitasi trim()
+        $m = new DivisiModel();
         $m->update($id, [
-            'kode'          => strtoupper($this->request->getPost('kode')),
-            'nama'          => $this->request->getPost('nama'),
+            'kode'          => strtoupper(trim($this->request->getPost('kode'))),
+            'nama'          => trim($this->request->getPost('nama')),
             'direktorat_id' => $this->request->getPost('direktorat_id'),
-            'deskripsi'     => $this->request->getPost('deskripsi'),
-            'kepala_divisi' => $this->request->getPost('kepala_divisi'),
+            'deskripsi'     => trim($this->request->getPost('deskripsi') ?? ''),
+            'kepala_divisi' => trim($this->request->getPost('kepala_divisi') ?? ''),
         ]);
 
         return redirect()->to(base_url('master/unit-kerja'))
-                        ->with('success', 'Unit kerja berhasil diupdate.');
+            ->with('success', 'Unit kerja berhasil diupdate.');
     }
 
     public function unitKerjaToggle(int $id)
@@ -954,13 +1336,13 @@ class MasterController extends BaseController
 
         if (!$d) {
             return redirect()->to(base_url('master/unit-kerja'))
-                            ->with('error', 'Unit kerja tidak ditemukan.');
+                ->with('error', 'Unit kerja tidak ditemukan.');
         }
 
         $m->update($id, ['is_active' => $d['is_active'] ? 0 : 1]);
 
         return redirect()->to(base_url('master/unit-kerja'))
-                        ->with('success', 'Status unit kerja diubah.');
+            ->with('success', 'Status unit kerja diubah.');
     }
 
     public function unitKerjaDelete(int $id)
@@ -973,10 +1355,12 @@ class MasterController extends BaseController
 
         if ($pegawaiCount > 0) {
             return redirect()->to(base_url('master/unit-kerja'))
-                            ->with('error',
-                                "Unit kerja tidak bisa dihapus karena masih memiliki "
-                                . "<strong>$pegawaiCount pegawai</strong>. "
-                                . "Pindahkan pegawai ke unit kerja lain terlebih dahulu.");
+                ->with(
+                    'error',
+                    "Unit kerja tidak bisa dihapus karena masih memiliki "
+                        . "<strong>$pegawaiCount pegawai</strong>. "
+                        . "Pindahkan pegawai ke unit kerja lain terlebih dahulu."
+                );
         }
 
         $kpiDivisiCount = (new \App\Models\KpiDivisiModel())
@@ -985,16 +1369,18 @@ class MasterController extends BaseController
 
         if ($kpiDivisiCount > 0) {
             return redirect()->to(base_url('master/unit-kerja'))
-                            ->with('error',
-                                "Unit kerja tidak bisa dihapus karena masih memiliki "
-                                . "<strong>$kpiDivisiCount KPI</strong> yang ditetapkan. "
-                                . "Hapus assignment KPI Divisi terlebih dahulu.");
+                ->with(
+                    'error',
+                    "Unit kerja tidak bisa dihapus karena masih memiliki "
+                        . "<strong>$kpiDivisiCount KPI</strong> yang ditetapkan. "
+                        . "Hapus assignment KPI Divisi terlebih dahulu."
+                );
         }
 
         $m->delete($id);
 
         return redirect()->to(base_url('master/unit-kerja'))
-                        ->with('success', 'Unit kerja berhasil dihapus.');
+            ->with('success', 'Unit kerja berhasil dihapus.');
     }
 
     public function direktoratDelete(int $id)
@@ -1008,10 +1394,12 @@ class MasterController extends BaseController
 
         if ($divisiCount > 0) {
             return redirect()->to(base_url('master/direktorat'))
-                            ->with('error',
-                                "Direktorat tidak bisa dihapus karena masih memiliki
+                ->with(
+                    'error',
+                    "Direktorat tidak bisa dihapus karena masih memiliki
                                 <strong>$divisiCount unit kerja</strong>.
-                                Hapus atau pindahkan unit kerja terlebih dahulu.");
+                                Hapus atau pindahkan unit kerja terlebih dahulu."
+                );
         }
 
         // Cek apakah masih ada KPI Unit yang menggunakan direktorat ini
@@ -1021,15 +1409,17 @@ class MasterController extends BaseController
 
         if ($kpiCount > 0) {
             return redirect()->to(base_url('master/direktorat'))
-                            ->with('error',
-                                "Direktorat tidak bisa dihapus karena masih memiliki
+                ->with(
+                    'error',
+                    "Direktorat tidak bisa dihapus karena masih memiliki
                                 <strong>$kpiCount KPI Unit</strong>.
-                                Hapus KPI Unit terlebih dahulu.");
+                                Hapus KPI Unit terlebih dahulu."
+                );
         }
 
         $m->delete($id);
 
         return redirect()->to(base_url('master/direktorat'))
-                        ->with('success', 'Direktorat berhasil dihapus.');
+            ->with('success', 'Direktorat berhasil dihapus.');
     }
 }

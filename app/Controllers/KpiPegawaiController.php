@@ -24,10 +24,55 @@ class KpiPegawaiController extends BaseController
         $this->divisiModel            = new DivisiModel();
     }
 
-    // ── Daftar pegawai untuk setup KPI ──────────────────────
-    public function index(): string
+    /**
+     * Field tambahan Parameter Turunan yang bergantung pada Polarity
+     * (identik dengan skema di KPI Unit/Modul Direktorat) — dipusatkan di
+     * sini karena dipakai sama persis oleh addTurunan() & updateTurunan().
+     */
+    private function buildTurunanPolarityData(string $polarity, string $perubahanPolarityRaw): array
     {
-        $check = $this->checkMenuAccess('penilaian');
+        return [
+            'perubahan_polarity' => in_array($polarity, ['max', 'min'], true)
+                ? (in_array($perubahanPolarityRaw, ['pos', 'neg'], true) ? $perubahanPolarityRaw : 'pos')
+                : 'pos',
+            'toleransi_skor4' => $polarity === 'precise' ? $this->request->getPost('toleransi_skor4') : null,
+            'toleransi_skor3' => $polarity === 'precise' ? $this->request->getPost('toleransi_skor3') : null,
+            'toleransi_skor2' => $polarity === 'precise' ? $this->request->getPost('toleransi_skor2') : null,
+            'sifat_khusus'    => $polarity === 'special'
+                ? (in_array($this->request->getPost('sifat_khusus'), ['maximize', 'minimize'], true)
+                    ? $this->request->getPost('sifat_khusus') : 'maximize')
+                : null,
+        ];
+    }
+
+    /**
+     * Validasi field tambahan Parameter Turunan yang bergantung pada
+     * Polarity. Mengembalikan pesan error, atau null jika valid.
+     */
+    private function validateTurunanPolarityData(string $polarity): ?string
+    {
+        if ($polarity === 'precise') {
+            $t4 = $this->request->getPost('toleransi_skor4');
+            $t3 = $this->request->getPost('toleransi_skor3');
+            $t2 = $this->request->getPost('toleransi_skor2');
+            if ($t4 === null || $t4 === '' || $t3 === null || $t3 === '' || $t2 === null || $t2 === '') {
+                return 'Toleransi Skor 4/3/2 wajib diisi untuk polarity Precise is Better.';
+            }
+            if (!((float)$t4 < (float)$t3 && (float)$t3 < (float)$t2)) {
+                return 'Toleransi harus menaik: Toleransi Skor 4 < Toleransi Skor 3 < Toleransi Skor 2.';
+            }
+        }
+        // 'tertimbang' tidak butuh field tambahan — Rata-rata Harian
+        // (Indikator 2) dimasukkan langsung sebagai persentase saat
+        // penginputan penilaian, bukan konfigurasi per-Turunan.
+
+        return null;
+    }
+
+    // ── Daftar pegawai untuk setup KPI ──────────────────────
+    public function index()
+    {
+        $check = $this->checkMenuAccess('kpi_pegawai');
         if ($check !== true) return $check;
         
         $pegawaiList = $this->pegawaiModel->getAllWithDivisi();
@@ -86,9 +131,9 @@ class KpiPegawaiController extends BaseController
     }
 
     // ── Form Setup KPI Per Pegawai ───────────────────────────
-    public function edit(int $pegawaiId): string
+    public function edit(int $pegawaiId)
     {
-        $check = $this->checkMenuAccess('penilaian');
+        $check = $this->checkMenuAccess('kpi_pegawai');
         if ($check !== true) return $check;
 
         if (!$this->canAccessPegawai($pegawaiId)) return $this->forbidden();
@@ -172,7 +217,7 @@ class KpiPegawaiController extends BaseController
     // ── Tambah satu KPI ke Pegawai ───────────────────────────
     public function add(int $pegawaiId)
     {
-        $check = $this->checkMenuAccess('penilaian');
+        $check = $this->checkMenuAccess('kpi_pegawai');
         if ($check !== true) return $check;
 
         if (!$this->canAccessPegawai($pegawaiId)) return $this->forbidden();
@@ -190,12 +235,21 @@ class KpiPegawaiController extends BaseController
                              ->with('error', 'KPI sudah ada untuk pegawai ini.');
         }
 
+        // Target 100 hanya bermakna sebagai default awal untuk polarity yang
+        // benar-benar memakainya (max/min/precise/tertimbang). Untuk
+        // 'special', Target sama sekali tidak dipakai oleh hitungSkorSpecial()
+        // — menampilkan angka 100 di form setup hanya akan menyesatkan Admin
+        // seolah perlu diisi. Diset 0 (bukan NULL, karena kolom NOT NULL)
+        // supaya form setup menampilkannya kosong/nihil.
+        $kpiUnit    = (new \App\Models\KpiUnitModel())->find($kpiId);
+        $targetAwal = (($kpiUnit['polarity'] ?? 'max') === 'special') ? 0 : 100.00;
+
         $this->kpiPegawaiModel->insert([
             'pegawai_id' => $pegawaiId,
             'kpi_id'     => $kpiId,
             'divisi_id'  => $pegawai['divisi_id'],
             'bobot'      => 0,
-            'target'     => 100.00, // Menambahkan default value untuk kolom target baru
+            'target'     => $targetAwal,
             'urutan'     => (int)$this->request->getPost('urutan') ?: 99,
             'is_active'  => 1,
         ]);
@@ -207,7 +261,7 @@ class KpiPegawaiController extends BaseController
     // ── Simpan bobot & target (batch update) ──────────────────
     public function saveBobot(int $pegawaiId)
     {
-        $check = $this->checkMenuAccess('penilaian');
+        $check = $this->checkMenuAccess('kpi_pegawai');
         if ($check !== true) return $check;
 
         if (!$this->canAccessPegawai($pegawaiId)) return $this->forbidden();
@@ -282,7 +336,7 @@ class KpiPegawaiController extends BaseController
     // ── Hapus KPI dari Pegawai ───────────────────────────────
     public function delete(int $id)
     {
-        $check = $this->checkMenuAccess('penilaian');
+        $check = $this->checkMenuAccess('kpi_pegawai');
         if ($check !== true) return $check;
 
         $row = $this->kpiPegawaiModel->find($id);
@@ -305,7 +359,7 @@ class KpiPegawaiController extends BaseController
     // ── Tambah Parameter Turunan ke suatu Parameter Induk ────
     public function addTurunan(int $kpiPegawaiId)
     {
-        $check = $this->checkMenuAccess('penilaian');
+        $check = $this->checkMenuAccess('kpi_pegawai');
         if ($check !== true) return $check;
 
         $induk = $this->kpiPegawaiModel->find($kpiPegawaiId);
@@ -326,12 +380,11 @@ class KpiPegawaiController extends BaseController
         $target            = (float)$this->request->getPost('target');
         $deskripsiTarget   = trim($this->request->getPost('deskripsi_target')  ?? '') ?: null;
         $polarity          = $this->request->getPost('polarity')           ?? 'max';
-        $perubahanPolarity = $this->request->getPost('perubahan_polarity')  ?? 'pos';
+        $perubahanPolarityRaw = $this->request->getPost('perubahan_polarity')  ?? 'pos';
         $satuan            = trim($this->request->getPost('satuan')         ?? '') ?: null;
 
         // Validasi enum agar tidak bisa dimanipulasi lewat POST
-        if (!in_array($polarity, ['max', 'min'])) $polarity = 'max';
-        if (!in_array($perubahanPolarity, ['pos', 'neg'])) $perubahanPolarity = 'pos';
+        if (!in_array($polarity, ['max', 'min', 'precise', 'special', 'tertimbang'], true)) $polarity = 'max';
 
         if ($nama === '') {
             return redirect()->to(base_url("kpi-pegawai/edit/{$induk['pegawai_id']}"))
@@ -343,9 +396,17 @@ class KpiPegawaiController extends BaseController
                              ->with('error', 'Bobot Parameter Turunan harus lebih besar dari 0.');
         }
 
-        if ($target <= 0) {
+        // Target tidak bermakna untuk polarity 'special' (penilaian Ada/Tidak
+        // Ada, tidak dibandingkan ke target) — jadi tidak diwajibkan > 0
+        // khusus untuk polarity ini.
+        if ($target <= 0 && $polarity !== 'special') {
             return redirect()->to(base_url("kpi-pegawai/edit/{$induk['pegawai_id']}"))
                              ->with('error', 'Target Parameter Turunan harus lebih besar dari 0.');
+        }
+
+        if ($errPolarity = $this->validateTurunanPolarityData($polarity)) {
+            return redirect()->to(base_url("kpi-pegawai/edit/{$induk['pegawai_id']}"))
+                             ->with('error', $errPolarity);
         }
 
         // Validasi tegas: SUM Bobot Turunan (termasuk yang baru ditambahkan
@@ -366,18 +427,17 @@ class KpiPegawaiController extends BaseController
         // Validasi target dihapus — setiap Turunan kini punya Target
         // independen dari Target Induk (beda satuan, beda makna).
 
-        $this->kpiPegawaiTurunanModel->insert([
-            'kpi_pegawai_id'     => $kpiPegawaiId,
-            'nama_turunan'       => $nama,
-            'bobot'              => $bobot,
-            'target'             => $target,
-            'deskripsi_target'   => $deskripsiTarget,
-            'polarity'           => $polarity,
-            'perubahan_polarity' => $perubahanPolarity,
-            'satuan'             => $satuan,
-            'urutan'             => (int)$this->request->getPost('urutan') ?: 99,
-            'is_active'          => 1,
-        ]);
+        $this->kpiPegawaiTurunanModel->insert(array_merge([
+            'kpi_pegawai_id'   => $kpiPegawaiId,
+            'nama_turunan'     => $nama,
+            'bobot'            => $bobot,
+            'target'           => $target,
+            'deskripsi_target' => $deskripsiTarget,
+            'polarity'         => $polarity,
+            'satuan'           => $satuan,
+            'urutan'           => (int)$this->request->getPost('urutan') ?: 99,
+            'is_active'        => 1,
+        ], $this->buildTurunanPolarityData($polarity, $perubahanPolarityRaw)));
 
         return redirect()->to(base_url("kpi-pegawai/edit/{$induk['pegawai_id']}"))
                          ->with('success', 'Parameter Turunan berhasil ditambahkan.');
@@ -386,7 +446,7 @@ class KpiPegawaiController extends BaseController
     // ── Hapus satu Parameter Turunan ──────────────────────────
     public function deleteTurunan(int $id)
     {
-        $check = $this->checkMenuAccess('penilaian');
+        $check = $this->checkMenuAccess('kpi_pegawai');
         if ($check !== true) return $check;
 
         $turunan = $this->kpiPegawaiTurunanModel->find($id);
@@ -414,7 +474,7 @@ class KpiPegawaiController extends BaseController
     // ── Update satu Parameter Turunan ─────────────────────────
     public function updateTurunan(int $id)
     {
-        $check = $this->checkMenuAccess('penilaian');
+        $check = $this->checkMenuAccess('kpi_pegawai');
         if ($check !== true) return $check;
 
         $turunan = $this->kpiPegawaiTurunanModel->find($id);
@@ -436,12 +496,11 @@ class KpiPegawaiController extends BaseController
         $target            = (float)$this->request->getPost('target');
         $deskripsiTarget   = trim($this->request->getPost('deskripsi_target')  ?? '') ?: null;
         $polarity          = $this->request->getPost('polarity')           ?? 'max';
-        $perubahanPolarity = $this->request->getPost('perubahan_polarity')  ?? 'pos';
+        $perubahanPolarityRaw = $this->request->getPost('perubahan_polarity')  ?? 'pos';
         $satuan            = trim($this->request->getPost('satuan')         ?? '') ?: null;
 
         // Validasi enum agar tidak bisa dimanipulasi lewat POST
-        if (!in_array($polarity, ['max', 'min'])) $polarity = 'max';
-        if (!in_array($perubahanPolarity, ['pos', 'neg'])) $perubahanPolarity = 'pos';
+        if (!in_array($polarity, ['max', 'min', 'precise', 'special', 'tertimbang'], true)) $polarity = 'max';
 
         if ($nama === '') {
             return redirect()->to(base_url("kpi-pegawai/edit/{$induk['pegawai_id']}"))
@@ -453,9 +512,17 @@ class KpiPegawaiController extends BaseController
                              ->with('error', 'Bobot Parameter Turunan harus lebih besar dari 0.');
         }
 
-        if ($target <= 0) {
+        // Target tidak bermakna untuk polarity 'special' (penilaian Ada/Tidak
+        // Ada, tidak dibandingkan ke target) — jadi tidak diwajibkan > 0
+        // khusus untuk polarity ini.
+        if ($target <= 0 && $polarity !== 'special') {
             return redirect()->to(base_url("kpi-pegawai/edit/{$induk['pegawai_id']}"))
                              ->with('error', 'Target Parameter Turunan harus lebih besar dari 0.');
+        }
+
+        if ($errPolarity = $this->validateTurunanPolarityData($polarity)) {
+            return redirect()->to(base_url("kpi-pegawai/edit/{$induk['pegawai_id']}"))
+                             ->with('error', $errPolarity);
         }
 
         // Validasi tegas Bobot, mengecualikan Turunan ini sendiri dari
@@ -477,15 +544,14 @@ class KpiPegawaiController extends BaseController
         // Validasi target dihapus — setiap Turunan kini punya Target
         // independen dari Target Induk (beda satuan, beda makna).
 
-        $this->kpiPegawaiTurunanModel->update($id, [
-            'nama_turunan'       => $nama,
-            'bobot'              => $bobot,
-            'target'             => $target,
-            'deskripsi_target'   => $deskripsiTarget,
-            'polarity'           => $polarity,
-            'perubahan_polarity' => $perubahanPolarity,
-            'satuan'             => $satuan,
-        ]);
+        $this->kpiPegawaiTurunanModel->update($id, array_merge([
+            'nama_turunan'     => $nama,
+            'bobot'            => $bobot,
+            'target'           => $target,
+            'deskripsi_target' => $deskripsiTarget,
+            'polarity'         => $polarity,
+            'satuan'           => $satuan,
+        ], $this->buildTurunanPolarityData($polarity, $perubahanPolarityRaw)));
 
         return redirect()->to(base_url("kpi-pegawai/edit/{$induk['pegawai_id']}"))
                          ->with('success', 'Parameter Turunan berhasil diperbarui.');
@@ -495,7 +561,7 @@ class KpiPegawaiController extends BaseController
     // Mengubah nama method menjadi copy() agar cocok dengan route form action `kpi-pegawai/copy/...`
     public function copy(int $pegawaiId)
     {
-        $check = $this->checkMenuAccess('penilaian');
+        $check = $this->checkMenuAccess('kpi_pegawai');
         if ($check !== true) return $check;
 
         if (!$this->canAccessPegawai($pegawaiId)) return $this->forbidden();
@@ -553,6 +619,16 @@ class KpiPegawaiController extends BaseController
                         'deskripsi_target'   => $t['deskripsi_target'] ?? null,
                         'polarity'           => $t['polarity']           ?? 'max',
                         'perubahan_polarity' => $t['perubahan_polarity'] ?? 'pos',
+                        // Field konfigurasi polarity baru (Precise/Special)
+                        // — WAJIB ikut disalin, karena Turunan tidak punya
+                        // fallback lain (tidak seperti KPI Unit, Turunan
+                        // sepenuhnya independen). Tanpa ini, Turunan hasil
+                        // salin akan kehilangan konfigurasinya dan skornya
+                        // akan salah dihitung senyap.
+                        'toleransi_skor4'    => $t['toleransi_skor4']    ?? null,
+                        'toleransi_skor3'    => $t['toleransi_skor3']    ?? null,
+                        'toleransi_skor2'    => $t['toleransi_skor2']    ?? null,
+                        'sifat_khusus'       => $t['sifat_khusus']       ?? null,
                         'satuan'             => $t['satuan']             ?? null,
                         'urutan'             => $t['urutan'],
                         'is_active'          => 1,
@@ -569,9 +645,9 @@ class KpiPegawaiController extends BaseController
 
     // ══ SALIN MASSAL KE SELURUH PEGAWAI DI SATU DIVISI ═══════
 
-    public function copyMassalForm(): string
+    public function copyMassalForm()
     {
-        $check = $this->checkMenuAccess('penilaian');
+        $check = $this->checkMenuAccess('kpi_pegawai');
         if ($check !== true) return $check;
 
         $pegawaiList = $this->pegawaiModel->getAllWithDivisi();
@@ -588,7 +664,7 @@ class KpiPegawaiController extends BaseController
 
     public function copyMassal()
     {
-        $check = $this->checkMenuAccess('penilaian');
+        $check = $this->checkMenuAccess('kpi_pegawai');
         if ($check !== true) return $check;
 
         $sourceId = (int)$this->request->getPost('source_pegawai_id');
@@ -664,6 +740,10 @@ class KpiPegawaiController extends BaseController
                             'deskripsi_target'   => $t['deskripsi_target'] ?? null,
                             'polarity'           => $t['polarity']           ?? 'max',
                             'perubahan_polarity' => $t['perubahan_polarity'] ?? 'pos',
+                            'toleransi_skor4'    => $t['toleransi_skor4']    ?? null,
+                            'toleransi_skor3'    => $t['toleransi_skor3']    ?? null,
+                            'toleransi_skor2'    => $t['toleransi_skor2']    ?? null,
+                            'sifat_khusus'       => $t['sifat_khusus']       ?? null,
                             'satuan'             => $t['satuan']             ?? null,
                             'urutan'             => $t['urutan'],
                             'is_active'          => 1,
@@ -683,9 +763,9 @@ class KpiPegawaiController extends BaseController
 
     // ══ IMPORT KPI PEGAWAI DARI EXCEL ════════════════════════
 
-    public function importForm(): string
+    public function importForm()
     {
-        $check = $this->checkMenuAccess('penilaian');
+        $check = $this->checkMenuAccess('kpi_pegawai');
         if ($check !== true) return $check;
 
         return view('layouts/main', [
@@ -696,7 +776,7 @@ class KpiPegawaiController extends BaseController
 
     public function importTemplate()
     {
-        $check = $this->checkMenuAccess('penilaian');
+        $check = $this->checkMenuAccess('kpi_pegawai');
         if ($check !== true) return $check;
 
         $spreadsheet = new \PhpOffice\PhpSpreadsheet\Spreadsheet();
@@ -749,7 +829,7 @@ class KpiPegawaiController extends BaseController
 
     public function importProcess()
     {
-        $check = $this->checkMenuAccess('penilaian');
+        $check = $this->checkMenuAccess('kpi_pegawai');
         if ($check !== true) return $check;
 
         $file = $this->request->getFile('file_excel');

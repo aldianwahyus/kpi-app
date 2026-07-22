@@ -1,0 +1,68 @@
+<?php
+
+namespace App\Database\Migrations;
+
+use CodeIgniter\Database\Migration;
+
+class AddPolarityTypesToKpiPegawaiTurunan extends Migration
+{
+    public function up(): void
+    {
+        // Parameter Turunan punya polarity independen sendiri (tidak
+        // diwarisi dari KPI Unit) — perluas dengan 3 tipe baru yang sama
+        // seperti di KPI Unit.
+        $this->db->query(
+            "ALTER TABLE kpi_pegawai_turunan MODIFY polarity
+             ENUM('max','min','precise','special','tertimbang') NOT NULL DEFAULT 'max'"
+        );
+
+        $this->forge->addColumn('kpi_pegawai_turunan', [
+            'toleransi_skor4' => [
+                'type'       => 'DECIMAL',
+                'constraint' => '5,2',
+                'null'       => true,
+                'default'    => null,
+                'after'      => 'perubahan_polarity',
+            ],
+            'toleransi_skor3' => [
+                'type'       => 'DECIMAL',
+                'constraint' => '5,2',
+                'null'       => true,
+                'default'    => null,
+                'after'      => 'toleransi_skor4',
+            ],
+            'toleransi_skor2' => [
+                'type'       => 'DECIMAL',
+                'constraint' => '5,2',
+                'null'       => true,
+                'default'    => null,
+                'after'      => 'toleransi_skor3',
+            ],
+            'sifat_khusus' => [
+                'type'       => 'ENUM',
+                'constraint' => ['maximize', 'minimize'],
+                'null'       => true,
+                'default'    => null,
+                'after'      => 'toleransi_skor2',
+            ],
+            'target_harian' => [
+                'type'       => 'DECIMAL',
+                'constraint' => '10,2',
+                'null'       => true,
+                'default'    => null,
+                'after'      => 'sifat_khusus',
+            ],
+        ]);
+    }
+
+    public function down(): void
+    {
+        $this->forge->dropColumn('kpi_pegawai_turunan', [
+            'toleransi_skor4', 'toleransi_skor3', 'toleransi_skor2',
+            'sifat_khusus', 'target_harian',
+        ]);
+        $this->db->query(
+            "ALTER TABLE kpi_pegawai_turunan MODIFY polarity ENUM('max','min') NOT NULL DEFAULT 'max'"
+        );
+    }
+}

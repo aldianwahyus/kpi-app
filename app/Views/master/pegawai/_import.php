@@ -1,6 +1,6 @@
 <div class="d-flex align-items-center gap-2 mb-3">
   <a href="<?= base_url('pegawai') ?>"
-     class="btn btn-sm btn-light border">
+    class="btn btn-sm btn-light border">
     <i class="ti ti-arrow-left"></i>
   </a>
   <h5 class="mb-0 fw-semibold" style="color:#1F4E79">
@@ -20,7 +20,7 @@
         Download template Excel
       </div>
       <a href="<?= base_url('pegawai/template-import') ?>"
-         class="btn btn-outline-primary btn-sm mt-2">
+        class="btn btn-outline-primary btn-sm mt-2">
         <i class="ti ti-file-spreadsheet me-1"></i> Download Template
       </a>
     </div>
@@ -54,7 +54,7 @@
 
 <!-- Catatan penting -->
 <div class="alert d-flex gap-2 py-2 mb-3"
-     style="background:#FFF3CD;border:1px solid #BF9000;font-size:13px">
+  style="background:#FFF3CD;border:1px solid #BF9000;font-size:13px">
   <i class="ti ti-alert-triangle" style="color:#BF9000;font-size:18px;flex-shrink:0"></i>
   <div style="color:#7F6000">
     <strong>Perhatian:</strong>
@@ -70,23 +70,24 @@
 
 <!-- Error dari import sebelumnya -->
 <?php if (session()->getFlashdata('import_errors')): ?>
-<div class="alert alert-warning py-2 mb-3" style="font-size:13px">
-  <strong>Detail baris yang gagal:</strong>
-  <ul class="mb-0 mt-1" style="padding-left:16px">
-    <?php foreach (session()->getFlashdata('import_errors') as $err): ?>
-      <li><?= esc($err) ?></li>
-    <?php endforeach; ?>
-  </ul>
-</div>
+  <div class="alert alert-warning py-2 mb-3" style="font-size:13px">
+    <strong>Detail baris yang gagal:</strong>
+    <ul class="mb-0 mt-1" style="padding-left:16px">
+      <?php foreach (session()->getFlashdata('import_errors') as $err): ?>
+        <li><?= esc($err) ?></li>
+      <?php endforeach; ?>
+    </ul>
+  </div>
 <?php endif; ?>
 
 <!-- Form upload -->
 <div class="card border-0 shadow-sm" style="max-width:500px">
   <div class="card-body">
     <form action="<?= base_url('pegawai/import-process') ?>"
-          method="post"
-          enctype="multipart/form-data"
-          onsubmit="document.getElementById('btn-import-submit').disabled=true; document.getElementById('btn-import-submit').innerHTML='<i class=\'ti ti-loader\'></i> Memproses...'; return true;">
+      method="post"
+      enctype="multipart/form-data"
+      id="formImportPegawai"
+      onsubmit="return validateAndSubmitImport(this)">
       <?= csrf_field() ?>
 
       <div class="mb-3">
@@ -94,9 +95,11 @@
           Upload File Excel
           <span class="text-danger">*</span>
         </label>
-        <input type="file" name="file_excel"
-               class="form-control form-control-sm"
-               accept=".xlsx,.xls" required>
+        <input type="file"
+          name="file_excel"
+          id="fileExcelPegawai"
+          class="form-control form-control-sm"
+          accept=".xlsx,.xls" required>
         <div class="form-text" style="font-size:11px">
           Format: .xlsx atau .xls | Maksimal: 5MB
         </div>
@@ -107,8 +110,29 @@
           <i class="ti ti-upload me-1"></i> Proses Import
         </button>
         <a href="<?= base_url('pegawai') ?>"
-           class="btn btn-light btn-sm px-4 border">Batal</a>
+          class="btn btn-light btn-sm px-4 border">Batal</a>
       </div>
     </form>
   </div>
 </div>
+
+<script>
+  function validateAndSubmitImport(form) {
+    const input = document.getElementById('fileExcelPegawai');
+    const file = input.files[0];
+    const maxSize = 5 * 1024 * 1024; // 5 MB
+
+    if (file && file.size > maxSize) {
+      alert('Ukuran file terlalu besar! Maksimal ukuran file adalah 5 MB.');
+      input.value = ''; // Reset pilihan file
+      return false; // Batalkan submit
+    }
+
+    // Jika ukuran file valid, ubah tombol menjadi state loading
+    const btn = document.getElementById('btn-import-submit');
+    btn.disabled = true;
+    btn.innerHTML = '<i class="ti ti-loader animate-spin me-1"></i> Memproses...';
+
+    return true;
+  }
+</script>

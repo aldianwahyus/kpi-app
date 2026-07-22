@@ -27,7 +27,7 @@ class NotifikasiController extends BaseController
         $this->emailLogModel  = new EmailLogModel();
     }
 
-    public function index(): string
+    public function index()
     {
         $check = $this->checkMenuAccess('notifikasi');
         if ($check !== true) return $check;
@@ -153,7 +153,7 @@ class NotifikasiController extends BaseController
     }
 
     // ── Halaman Histori Lengkap ───────────────────────────────
-    public function histori(): string
+    public function histori()
     {
         $check = $this->checkMenuAccess('notifikasi');
         if ($check !== true) return $check;

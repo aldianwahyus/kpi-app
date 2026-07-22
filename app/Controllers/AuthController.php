@@ -18,13 +18,48 @@ class AuthController extends BaseController
         if (session()->get('logged_in')) {
             return redirect()->to(base_url('dashboard'));
         }
-        return view('auth/login');
+
+        // --- MULAI PENAMBAHAN CAPTCHA ---
+        $angka1 = rand(1, 9);
+        $angka2 = rand(1, 9);
+        $jawaban_benar = $angka1 + $angka2;
+
+        // Simpan jawaban ke session
+        session()->set('captcha_answer', $jawaban_benar);
+
+        // Kirim teks soal ke view
+        $data = [
+            'captcha_text' => "$angka1 + $angka2"
+        ];
+        // --- AKHIR PENAMBAHAN CAPTCHA ---
+
+        return view('auth/login', $data);
     }
 
-    public function doLogin()
+   public function doLogin()
     {
         $email = $this->request->getPost('email');
-        $ip    = $this->request->getIPAddress();
+        
+        // --- MULAI VALIDASI CAPTCHA ---
+        $jawabanUser = $this->request->getPost('captcha');
+        $jawabanBenar = session()->get('captcha_answer');
+
+        // Jika tebakan kosong atau salah
+        if ($jawabanUser === null || $jawabanUser == '' || $jawabanUser != $jawabanBenar) {
+            // Hapus session captcha lama agar soal ter-reset saat view diload ulang
+            session()->remove('captcha_answer');
+            
+            return redirect()->back()
+                             ->with('error', 'Jawaban perhitungan keamanan salah. Silakan coba lagi.')
+                             ->with('_ci_old_input', ['get' => [], 'post' => ['email' => $email]]);
+        }
+
+        // Jika benar, hapus session captcha agar tidak disalahgunakan
+        session()->remove('captcha_answer');
+        // --- AKHIR VALIDASI CAPTCHA ---
+
+
+        $ip = $this->request->getIPAddress();
 
         // Cek rate limit (max 5 percobaan per 15 menit)
         $cache    = \Config\Services::cache();
@@ -33,8 +68,8 @@ class AuthController extends BaseController
 
         if ($attempts >= 5) {
             return redirect()->back()
-                            ->with('error',
-                                'Terlalu banyak percobaan login. Coba lagi dalam 15 menit.');
+                             ->with('error',
+                                 'Terlalu banyak percobaan login. Coba lagi dalam 15 menit.');
         }
 
         $password = $this->request->getPost('password');
@@ -53,8 +88,8 @@ class AuthController extends BaseController
             // login hanya pernah memanggil old('email'), tidak pernah
             // old('password')).
             return redirect()->back()
-                            ->with('error', 'Email atau password salah.')
-                            ->with('_ci_old_input', ['get' => [], 'post' => ['email' => $email]]);
+                             ->with('error', 'Email atau password salah.')
+                             ->with('_ci_old_input', ['get' => [], 'post' => ['email' => $email]]);
         }
 
         // Login berhasil — hapus cache rate limit

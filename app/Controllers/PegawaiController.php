@@ -1,4 +1,5 @@
 <?php
+
 namespace App\Controllers;
 
 use App\Models\PegawaiModel;
@@ -19,18 +20,18 @@ class PegawaiController extends BaseController
     }
 
     // ── Daftar Pegawai ───────────────────────────────────────
-    public function index(): string
+    public function index()
     {
         $check = $this->checkMenuAccess('pegawai');
         if ($check !== true) return $check;
-        
+
         $pegawai = $this->pegawaiModel->getAllWithDivisi();
 
         // PERBAIKAN: Mengganti whereNotNull dengan sintaks CI4 yang benar
         $allUsers = $this->userModel->select('pegawai_id')
-                                    ->where('pegawai_id IS NOT NULL')
-                                    ->findAll();
-                                    
+            ->where('pegawai_id IS NOT NULL')
+            ->findAll();
+
         $userPegawaiIds = array_column($allUsers, 'pegawai_id');
 
         // Tandai setiap pegawai apakah punya user
@@ -55,7 +56,7 @@ class PegawaiController extends BaseController
     }
 
     // ── Form Tambah ──────────────────────────────────────────
-    public function create(): string
+    public function create()
     {
         $check = $this->checkMenuAccess('pegawai');
         if ($check !== true) return $check;
@@ -78,42 +79,44 @@ class PegawaiController extends BaseController
         $check = $this->checkMenuAccess('pegawai');
         if ($check !== true) return $check;
 
+        // 1. Aturan Validasi Form (NIP & Email unik otomatis)
         $rules = [
-            'nama'      => 'required|min_length[3]',
-            'nip'       => 'permit_empty',
+            'nama'      => 'required|trim|min_length[3]',
+            'nip'       => 'permit_empty|trim|regex_match[/^\S+$/]|is_unique[pegawai.nip]',
             'divisi_id' => 'required',
-            'jabatan'   => 'permit_empty',
-            'email'     => 'permit_empty|valid_email',
+            'jabatan'   => 'permit_empty|trim',
+            'unit'      => 'permit_empty|trim',
+            'golongan'  => 'permit_empty|trim',
+            'email'     => 'permit_empty|trim|valid_email|is_unique[users.email]',
         ];
 
-        if (!$this->validate($rules)) {
+        // 2. Pesan Error Custom
+        $messages = [
+            'nama' => [
+                'required'   => 'Nama pegawai wajib diisi.',
+                'min_length' => 'Nama pegawai minimal 3 karakter.'
+            ],
+            'nip' => [
+                'regex_match' => 'NIP tidak boleh mengandung spasi atau whitespace.',
+                'is_unique'   => 'NIP sudah terdaftar pada sistem.'
+            ],
+            'email' => [
+                'valid_email' => 'Format email tidak valid.',
+                'is_unique'   => 'Email sudah digunakan oleh akun lain.'
+            ]
+        ];
+
+        if (!$this->validate($rules, $messages)) {
             return redirect()->back()
-                             ->withInput()
-                             ->with('errors', $this->validator->getErrors());
+                ->withInput()
+                ->with('errors', $this->validator->getErrors());
         }
 
-        // Cek NIP duplikat
-        $nip = trim($this->request->getPost('nip'));
-        if ($nip && $this->pegawaiModel->isNipExists($nip)) {
-            return redirect()->back()
-                             ->withInput()
-                             ->with('error', "NIP '$nip' sudah terdaftar.");
-        }
+        $nip   = trim($this->request->getPost('nip') ?? '');
+        $nama  = trim($this->request->getPost('nama'));
+        $email = trim($this->request->getPost('email') ?? '');
 
-        // Cek email duplikat sebelum insert, agar tidak menimbulkan
-        // database exception (error 500) akibat constraint unique pada kolom email.
-        $email = trim($this->request->getPost('email'));
-        if ($email && $this->userModel->where('email', $email)->first()) {
-            return redirect()->back()
-                             ->withInput()
-                             ->with('error', "Email '$email' sudah digunakan oleh akun lain.");
-        }
-
-        // ── Guard anti-duplikat: cegah insert ganda apabila form yang sama
-        //    terkirim lebih dari satu kali dalam rentang waktu singkat
-        //    (misalnya akibat koneksi jaringan tidak stabil/retry browser),
-        //    tanpa memblokir pengiriman data baru yang memang berbeda.
-        $nama = trim($this->request->getPost('nama'));
+        // 3. Guard Anti-Duplikat Double Submit (Rentang 10 detik)
         $duplikatRecent = $this->pegawaiModel
             ->where('nama', $nama)
             ->where('divisi_id', $this->request->getPost('divisi_id'))
@@ -122,50 +125,48 @@ class PegawaiController extends BaseController
 
         if ($duplikatRecent) {
             return redirect()->to(base_url('pegawai'))
-                             ->with('success', 'Pegawai berhasil ditambahkan.');
+                ->with('success', 'Pegawai berhasil ditambahkan.');
         }
 
+        // 4. Insert Data Pegawai
         $pegawaiId = $this->pegawaiModel->insert([
-            'nip'       => $nip ?: null,
+            'nip'       => $nip !== '' ? $nip : null,
             'nama'      => $nama,
-            'jabatan'   => $this->request->getPost('jabatan'),
-            'unit'      => $this->request->getPost('unit'),
+            'jabatan'   => trim($this->request->getPost('jabatan') ?? '') ?: null,
+            'unit'      => trim($this->request->getPost('unit') ?? '') ?: null,
             'divisi_id' => $this->request->getPost('divisi_id'),
-            'golongan'  => $this->request->getPost('golongan'),
+            'golongan'  => trim($this->request->getPost('golongan') ?? '') ?: null,
             'tgl_masuk' => $this->request->getPost('tgl_masuk') ?: null,
             'atasan_id' => $this->request->getPost('atasan_id') ?: null,
             'is_active' => 1,
         ]);
 
-        // Buat akun user otomatis jika email diisi
-        if ($email) {
-            $passwordInput = $this->request->getPost('password');
-            $role = $this->request->getPost('role');
+        // 5. Buat Akun User Otomatis Jika Email Diisi
+        if ($email !== '') {
+            $passwordInput = trim($this->request->getPost('password') ?? '');
+            $role          = $this->request->getPost('role');
+
             $this->userModel->insert([
-                'pegawai_id' => $pegawaiId,
-                'nama'       => $nama,
-                'email'      => $email,
-                'password'   => password_hash(
-                    $passwordInput ?: 'pegawai123',
+                'pegawai_id'           => $pegawaiId,
+                'nama'                 => $nama,
+                'email'                => $email,
+                'password'             => password_hash(
+                    $passwordInput !== '' ? $passwordInput : 'pegawai123',
                     PASSWORD_DEFAULT
                 ),
-                // Wajib ganti password pada login pertama apabila akun
-                // dibuat memakai password default ('pegawai123'), karena
-                // password tersebut mudah ditebak dan tercantum terbuka
-                // pada template import Excel.
-                'must_change_password' => $passwordInput ? 0 : 1,
-                'role'       => in_array($role, ['admin', 'hr', 'drafter', 'approver', 'pegawai'], true)
-                                ? $role : 'pegawai',
-                'is_active'  => 1,
+                'must_change_password' => $passwordInput !== '' ? 0 : 1,
+                'role'                 => in_array($role, ['admin', 'hr', 'drafter', 'approver', 'pegawai'], true)
+                    ? $role : 'pegawai',
+                'is_active'            => 1,
             ]);
         }
 
         return redirect()->to(base_url('pegawai'))
-                         ->with('success', 'Pegawai berhasil ditambahkan.');
+            ->with('success', 'Pegawai berhasil ditambahkan.');
     }
 
     // ── Form Edit ────────────────────────────────────────────
-    public function edit(int $id): string
+    public function edit(int $id)
     {
         $check = $this->checkMenuAccess('pegawai');
         if ($check !== true) return $check;
@@ -198,76 +199,91 @@ class PegawaiController extends BaseController
             return redirect()->to(base_url('pegawai'))->with('error', 'Pegawai tidak ditemukan.');
         }
 
+        $existingUser = $this->userModel->where('pegawai_id', $id)->first();
+        $userId       = $existingUser ? $existingUser['id'] : '';
+
+        // 1. Aturan Validasi Form (NIP & Email mengabaikan ID yang sedang di-update)
         $rules = [
-            'nama'      => 'required|min_length[3]',
+            'nama'      => 'required|trim|min_length[3]',
+            'nip'       => "permit_empty|trim|regex_match[/^\S+$/]|is_unique[pegawai.nip,id,{$id}]",
             'divisi_id' => 'required',
-            'email'     => 'permit_empty|valid_email',
+            'jabatan'   => 'permit_empty|trim',
+            'unit'      => 'permit_empty|trim',
+            'golongan'  => 'permit_empty|trim',
+            'email'     => "permit_empty|trim|valid_email|is_unique[users.email,id,{$userId}]",
         ];
 
-        if (!$this->validate($rules)) {
+        // 2. Pesan Error Custom
+        $messages = [
+            'nama' => [
+                'required'   => 'Nama pegawai wajib diisi.',
+                'min_length' => 'Nama pegawai minimal 3 karakter.'
+            ],
+            'nip' => [
+                'regex_match' => 'NIP tidak boleh mengandung spasi atau whitespace.',
+                'is_unique'   => 'NIP sudah digunakan oleh pegawai lain.'
+            ],
+            'email' => [
+                'valid_email' => 'Format email tidak valid.',
+                'is_unique'   => 'Email sudah digunakan oleh akun lain.'
+            ]
+        ];
+
+        if (!$this->validate($rules, $messages)) {
             return redirect()->back()
-                             ->withInput()
-                             ->with('errors', $this->validator->getErrors());
+                ->withInput()
+                ->with('errors', $this->validator->getErrors());
         }
 
-        $nip = trim($this->request->getPost('nip'));
-        if ($nip && $this->pegawaiModel->isNipExists($nip, $id)) {
-            return redirect()->back()
-                             ->withInput()
-                             ->with('error', "NIP '$nip' sudah digunakan pegawai lain.");
-        }
+        $nip   = trim($this->request->getPost('nip') ?? '');
+        $nama  = trim($this->request->getPost('nama'));
+        $email = trim($this->request->getPost('email') ?? '');
 
-        $existingUser = $this->userModel->where('pegawai_id', $id)->first();
-        $email = trim($this->request->getPost('email'));
-        if ($email) {
-            $emailOwner = $this->userModel->where('email', $email)->first();
-            $isOwnedByOther = $emailOwner && (!$existingUser || $emailOwner['id'] != $existingUser['id']);
-            if ($isOwnedByOther) {
-                return redirect()->back()
-                                 ->withInput()
-                                 ->with('error', "Email '$email' sudah digunakan oleh akun lain.");
-            }
-        }
-
+        // 3. Update Data Pegawai
         $this->pegawaiModel->update($id, [
-            'nip'       => $nip ?: null,
-            'nama'      => $this->request->getPost('nama'),
-            'jabatan'   => $this->request->getPost('jabatan'),
-            'unit'      => $this->request->getPost('unit'),
+            'nip'       => $nip !== '' ? $nip : null,
+            'nama'      => $nama,
+            'jabatan'   => trim($this->request->getPost('jabatan') ?? '') ?: null,
+            'unit'      => trim($this->request->getPost('unit') ?? '') ?: null,
             'divisi_id' => $this->request->getPost('divisi_id'),
-            'golongan'  => $this->request->getPost('golongan'),
+            'golongan'  => trim($this->request->getPost('golongan') ?? '') ?: null,
             'tgl_masuk' => $this->request->getPost('tgl_masuk') ?: null,
             'atasan_id' => $this->request->getPost('atasan_id') ?: null,
         ]);
 
-        if ($email) {
+        // 4. Sync/Update Akun User
+        if ($email !== '') {
             $role = $this->request->getPost('role');
             $role = in_array($role, ['admin', 'hr', 'drafter', 'approver', 'pegawai'], true)
-                    ? $role : 'pegawai';
+                ? $role : 'pegawai';
+
             if ($existingUser) {
-                $updateData = ['email' => $email, 'role' => $role];
-                if ($pwd = trim($this->request->getPost('password'))) {
-                    // Password apa pun yang ditentukan Admin (baik custom
-                    // maupun default) tetap mewajibkan pengguna menggantinya
-                    // saat login pertama — hanya pemilik akun sendiri yang
-                    // boleh menjadi satu-satunya pihak yang tahu password
-                    // aslinya secara permanen.
-                    $updateData['password']              = password_hash($pwd, PASSWORD_DEFAULT);
-                    $updateData['must_change_password']   = 1;
+                $updateData = [
+                    'nama'  => $nama,
+                    'email' => $email,
+                    'role'  => $role
+                ];
+
+                if ($pwd = trim($this->request->getPost('password') ?? '')) {
+                    $updateData['password']             = password_hash($pwd, PASSWORD_DEFAULT);
+                    $updateData['must_change_password'] = 1;
                 }
+
                 $this->userModel->update($existingUser['id'], $updateData);
             } else {
+                $pwd = trim($this->request->getPost('password') ?? '');
                 $this->userModel->insert([
-                    'pegawai_id' => $id,
-                    'nama'       => $this->request->getPost('nama'),
-                    'email'      => $email,
-                    'password'   => password_hash($this->request->getPost('password') ?: 'pegawai123', PASSWORD_DEFAULT),
+                    'pegawai_id'           => $id,
+                    'nama'                 => $nama,
+                    'email'                => $email,
+                    'password'             => password_hash($pwd !== '' ? $pwd : 'pegawai123', PASSWORD_DEFAULT),
                     'must_change_password' => 1,
-                    'role'       => $role,
-                    'is_active'  => 1,
+                    'role'                 => $role,
+                    'is_active'            => 1,
                 ]);
             }
         }
+
         return redirect()->to(base_url('pegawai'))->with('success', 'Data berhasil diupdate.');
     }
 
@@ -289,7 +305,7 @@ class PegawaiController extends BaseController
         $pegawai = $this->pegawaiModel->find($id);
         if (!$pegawai) {
             return redirect()->to(base_url('pegawai'))
-                             ->with('error', 'Pegawai tidak ditemukan.');
+                ->with('error', 'Pegawai tidak ditemukan.');
         }
 
         // Cegah penghapusan pegawai yang masih memiliki riwayat penilaian.
@@ -302,11 +318,13 @@ class PegawaiController extends BaseController
 
         if ($jumlahPenilaian > 0) {
             return redirect()->to(base_url('pegawai'))
-                             ->with('error',
-                                 "Pegawai tidak bisa dihapus karena masih memiliki "
-                                 . "<strong>$jumlahPenilaian data penilaian</strong>. "
-                                 . "Nonaktifkan pegawai ini alih-alih menghapusnya jika "
-                                 . "sudah tidak aktif bekerja.");
+                ->with(
+                    'error',
+                    "Pegawai tidak bisa dihapus karena masih memiliki "
+                        . "<strong>$jumlahPenilaian data penilaian</strong>. "
+                        . "Nonaktifkan pegawai ini alih-alih menghapusnya jika "
+                        . "sudah tidak aktif bekerja."
+                );
         }
 
         $jumlahKpiPegawai = $this->pegawaiModel->db->table('kpi_pegawai')
@@ -315,10 +333,12 @@ class PegawaiController extends BaseController
 
         if ($jumlahKpiPegawai > 0) {
             return redirect()->to(base_url('pegawai'))
-                             ->with('error',
-                                 "Pegawai tidak bisa dihapus karena masih memiliki "
-                                 . "konfigurasi KPI Per Pegawai. Hapus konfigurasi KPI "
-                                 . "terlebih dahulu di modul KPI Per Pegawai.");
+                ->with(
+                    'error',
+                    "Pegawai tidak bisa dihapus karena masih memiliki "
+                        . "konfigurasi KPI Per Pegawai. Hapus konfigurasi KPI "
+                        . "terlebih dahulu di modul KPI Per Pegawai."
+                );
         }
 
         $this->userModel->where('pegawai_id', $id)->delete();
@@ -353,7 +373,7 @@ class PegawaiController extends BaseController
         foreach ($headers as $col => $label) {
             $sheet->setCellValue("{$col}1", $label);
             $sheet->getStyle("{$col}1")->applyFromArray([
-                'font' => ['bold'=>true,'color'=>['rgb'=>'FFFFFF']],
+                'font' => ['bold' => true, 'color' => ['rgb' => 'FFFFFF']],
                 'fill' => [
                     'fillType' => \PhpOffice\PhpSpreadsheet\Style\Fill::FILL_SOLID,
                     'color'    => ['rgb' => '1F4E79'],
@@ -364,10 +384,30 @@ class PegawaiController extends BaseController
 
         // Contoh data
         $contoh = [
-            ['1234567890','Budi Santoso','Staff','Unit Kredit','DIV-HCD',
-            'III/A','2020-01-15','budi@email.com','budi123','pegawai'],
-            ['0987654321','Siti Rahayu','Kepala Unit','Unit Audit','DIV-IA',
-            'III/B','2018-06-01','siti@email.com','siti123','approver'],
+            [
+                '1234567890',
+                'Budi Santoso',
+                'Staff',
+                'Unit Kredit',
+                'DIV-HCD',
+                'III/A',
+                '2020-01-15',
+                'budi@email.com',
+                'budi123',
+                'pegawai'
+            ],
+            [
+                '0987654321',
+                'Siti Rahayu',
+                'Kepala Unit',
+                'Unit Audit',
+                'DIV-IA',
+                'III/B',
+                '2018-06-01',
+                'siti@email.com',
+                'siti123',
+                'approver'
+            ],
         ];
 
         foreach ($contoh as $i => $row) {
@@ -379,11 +419,14 @@ class PegawaiController extends BaseController
         }
 
         // Catatan
-        $sheet->setCellValue('A' . (count($contoh)+3),
-            '* Wajib diisi. Kode Divisi harus sesuai dengan kode di Master Data Unit Kerja.');
-        $sheet->getStyle('A' . (count($contoh)+3))->getFont()
+        $sheet->setCellValue(
+            'A' . (count($contoh) + 3),
+            '* Wajib diisi. Kode Divisi harus sesuai dengan kode di Master Data Unit Kerja.'
+        );
+        $sheet->getStyle('A' . (count($contoh) + 3))->getFont()
             ->setItalic(true)->setColor(
-                new \PhpOffice\PhpSpreadsheet\Style\Color('FF888888'));
+                new \PhpOffice\PhpSpreadsheet\Style\Color('FF888888')
+            );
 
         // Daftar divisi sebagai referensi di sheet kedua
         $sheet2 = $spreadsheet->createSheet();
@@ -414,7 +457,7 @@ class PegawaiController extends BaseController
     }
 
     // ── Form Import ───────────────────────────────────────────
-    public function importForm(): string
+    public function importForm()
     {
         $check = $this->checkMenuAccess('pegawai');
         if ($check !== true) return $check;
@@ -435,7 +478,7 @@ class PegawaiController extends BaseController
 
         if (!$file || !$file->isValid()) {
             return redirect()->back()
-                            ->with('error', 'File tidak valid.');
+                ->with('error', 'File tidak valid.');
         }
 
         // Validasi MIME type yang sebenarnya, bukan hanya ekstensi
@@ -446,20 +489,20 @@ class PegawaiController extends BaseController
 
         if (!in_array($file->getMimeType(), $allowedMimes)) {
             return redirect()->back()
-                            ->with('error', 'Format file tidak valid. Gunakan .xlsx atau .xls.');
+                ->with('error', 'Format file tidak valid. Gunakan .xlsx atau .xls.');
         }
 
         // Validasi ukuran maksimal 5MB
         if ($file->getSize() > 5 * 1024 * 1024) {
             return redirect()->back()
-                            ->with('error', 'Ukuran file maksimal 5MB.');
+                ->with('error', 'Ukuran file maksimal 5MB.');
         }
 
         // Validasi ekstensi file (cegah path traversal/penyamaran ekstensi)
         $extension = $file->getClientExtension();
         if (!in_array($extension, ['xlsx', 'xls'])) {
             return redirect()->back()
-                            ->with('error', 'Ekstensi file tidak diizinkan.');
+                ->with('error', 'Ekstensi file tidak diizinkan.');
         }
 
         try {
@@ -538,7 +581,7 @@ class PegawaiController extends BaseController
                         ),
                         'must_change_password' => 1,
                         'role'                 => in_array($role, ['admin', 'hr', 'drafter', 'approver', 'pegawai'])
-                                                  ? $role : 'pegawai',
+                            ? $role : 'pegawai',
                         'is_active'            => 1,
                     ]);
                 }
@@ -552,13 +595,12 @@ class PegawaiController extends BaseController
             }
 
             return redirect()->to(base_url('pegawai'))
-                            ->with($berhasil > 0 ? 'success' : 'error', $pesan)
-                            ->with('import_errors', $dilewati);
-
+                ->with($berhasil > 0 ? 'success' : 'error', $pesan)
+                ->with('import_errors', $dilewati);
         } catch (\Exception $e) {
             log_message('error', 'Import gagal: ' . $e->getMessage());
             return redirect()->back()
-                            ->with('error', 'Gagal membaca file. Pastikan format sesuai template.');
+                ->with('error', 'Gagal membaca file. Pastikan format sesuai template.');
         }
     }
 }

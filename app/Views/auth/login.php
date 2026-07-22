@@ -107,6 +107,7 @@
         </div>
       <?php endif; ?>
 
+      <!-- Pastikan route 'auth/login' ini mengarah ke method doLogin() Anda saat di-POST -->
       <form action="<?= base_url('auth/login') ?>" method="post">
         <?= csrf_field() ?>
 
@@ -114,18 +115,30 @@
           <label class="form-label">Email</label>
           <input type="email" name="email"
                  class="form-control"
-                 value="<?= old('email') ?>"
+                 value="<?= esc(old('email')) ?>"
                  placeholder="nama@bankntbsyariah.co.id"
                  required autofocus>
         </div>
 
-        <div class="mb-4">
+        <div class="mb-3">
           <label class="form-label">Password</label>
           <input type="password" name="password"
                  class="form-control"
                  placeholder="••••••••"
                  required>
         </div>
+
+        <!-- MULAI WIDGET CAPTCHA MATEMATIKA -->
+        <div class="mb-4">
+          <label class="form-label">
+            Keamanan: Berapa hasil dari <strong class="text-primary"><?= esc($captcha_text) ?></strong>?
+          </label>
+          <input type="number" name="captcha"
+                 class="form-control"
+                 placeholder="Masukkan hasil penjumlahan"
+                 required autocomplete="off">
+        </div>
+        <!-- AKHIR WIDGET CAPTCHA MATEMATIKA -->
 
         <button type="submit"
                 class="btn btn-login btn-primary w-100 text-white">

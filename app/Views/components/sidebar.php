@@ -193,6 +193,9 @@ $canShow = function($kode) use ($permModel, $role) {
     <div class="collapse" id="collapseLaporan">
       <li class="nav-item"><a href="<?= base_url('laporan/pdf') ?>" style="display:flex; align-items:center; gap:8px; text-decoration:none;"><i class="ti ti-file-text"></i> Export PDF Rekap</a></li>
       <li class="nav-item"><a href="<?= base_url('laporan/excel') ?>" style="display:flex; align-items:center; gap:8px; text-decoration:none;"><i class="ti ti-file-spreadsheet"></i> Export Excel Rekap</a></li>
+      <?php if ($role === 'admin'): ?>
+      <li class="nav-item"><a href="<?= base_url('arsip-periode') ?>" style="display:flex; align-items:center; gap:8px; text-decoration:none;"><i class="ti ti-archive"></i> Arsip Periode</a></li>
+      <?php endif; ?>
       <li class="nav-item"><a href="<?= base_url('profil') ?>" style="display:flex; align-items:center; gap:8px; text-decoration:none;"><i class="ti ti-user-circle"></i> Profil</a></li>
     </div>
     <?php endif; ?>

@@ -10,6 +10,15 @@
     </small>
   </h5>
 </div>
+<?php if (session()->getFlashdata('errors')): ?>
+  <div class="alert alert-danger py-2" style="font-size:13px">
+    <ul class="mb-0">
+      <?php foreach (session()->getFlashdata('errors') as $err): ?>
+        <li><?= esc($err) ?></li>
+      <?php endforeach; ?>
+    </ul>
+  </div>
+<?php endif; ?>
 
 <div class="card border-0 shadow-sm" style="max-width:650px">
   <div class="card-body">
@@ -67,20 +76,20 @@
           <input type="number" name="urutan" class="form-control form-control-sm"
                  value="<?= old('urutan', $kpi['urutan'] ?? 99) ?>">
         </div>
+        <?php $curPolarity = old('polarity', $kpi['polarity'] ?? 'max'); ?>
         <div class="col-md-6">
           <label class="form-label fw-semibold small">Polarity</label>
-          <select name="polarity" class="form-select form-select-sm">
-            <option value="max"
-              <?= old('polarity', $kpi['polarity'] ?? 'max') === 'max' ? 'selected' : '' ?>>
-              ↑ Maximize
-            </option>
-            <option value="min"
-              <?= old('polarity', $kpi['polarity'] ?? 'max') === 'min' ? 'selected' : '' ?>>
-              ↓ Minimize
-            </option>
+          <select name="polarity" id="sel-polarity" class="form-select form-select-sm">
+            <option value="max"        <?= $curPolarity === 'max'        ? 'selected' : '' ?>>↑ Maximize</option>
+            <option value="min"        <?= $curPolarity === 'min'        ? 'selected' : '' ?>>↓ Minimize</option>
+            <option value="precise"    <?= $curPolarity === 'precise'    ? 'selected' : '' ?>>◎ Precise is Better</option>
+            <option value="special"    <?= $curPolarity === 'special'    ? 'selected' : '' ?>>⚑ Special Scoring</option>
+            <option value="tertimbang" <?= $curPolarity === 'tertimbang' ? 'selected' : '' ?>>⚖ Scoring Tertimbang</option>
           </select>
         </div>
-        <div class="col-md-6">
+
+        <!-- Perubahan Polarity — hanya untuk Maximize/Minimize (skema lama) -->
+        <div class="col-md-6 polarity-field" data-for="max,min">
           <label class="form-label fw-semibold small">Perubahan Polarity</label>
           <select name="perubahan_polarity" class="form-select form-select-sm">
             <option value="pos"
@@ -92,6 +101,62 @@
               Negatif → Target/Real
             </option>
           </select>
+        </div>
+
+        <!-- Precise is Better — 3 toleransi deviasi (%) simetris dari target,
+             menaik: Skor4 < Skor3 < Skor2. Skor 1 = di luar toleransi Skor 2. -->
+        <div class="col-12 polarity-field" data-for="precise">
+          <div class="alert py-2 mb-2" style="font-size:11px;background:#E6F1FB;border:1px solid #2E75B6;color:#1F4E79">
+            Toleransi deviasi (%) dari target (100%), berlaku simetris di atas & di bawah.
+            Skor 1 otomatis berlaku di luar Toleransi Skor 2.
+          </div>
+          <div class="row g-2">
+            <div class="col-md-4">
+              <label class="form-label fw-semibold small">Toleransi Skor 4 (±%)</label>
+              <input type="number" name="toleransi_skor4" class="form-control form-control-sm"
+                     step="any" min="0" placeholder="2.5"
+                     value="<?= esc(old('toleransi_skor4', $kpi['toleransi_skor4'] ?? '')) ?>">
+            </div>
+            <div class="col-md-4">
+              <label class="form-label fw-semibold small">Toleransi Skor 3 (±%)</label>
+              <input type="number" name="toleransi_skor3" class="form-control form-control-sm"
+                     step="any" min="0" placeholder="7.5"
+                     value="<?= esc(old('toleransi_skor3', $kpi['toleransi_skor3'] ?? '')) ?>">
+            </div>
+            <div class="col-md-4">
+              <label class="form-label fw-semibold small">Toleransi Skor 2 (±%)</label>
+              <input type="number" name="toleransi_skor2" class="form-control form-control-sm"
+                     step="any" min="0" placeholder="12.5"
+                     value="<?= esc(old('toleransi_skor2', $kpi['toleransi_skor2'] ?? '')) ?>">
+            </div>
+          </div>
+        </div>
+
+        <!-- Special Scoring — Sifat menentukan arah Skor untuk kejadian Ada/Tidak Ada -->
+        <div class="col-md-6 polarity-field" data-for="special">
+          <label class="form-label fw-semibold small">Sifat</label>
+          <select name="sifat_khusus" class="form-select form-select-sm">
+            <option value="maximize"
+              <?= old('sifat_khusus', $kpi['sifat_khusus'] ?? 'maximize') === 'maximize' ? 'selected' : '' ?>>
+              Maximize — (Contoh: Jika Ada/Terealisasi = Skor 4, Jika Tidak Ada/Tidak Terealisasi = Skor 1)
+            </option>
+            <option value="minimize"
+              <?= old('sifat_khusus', $kpi['sifat_khusus'] ?? 'maximize') === 'minimize' ? 'selected' : '' ?>>
+              Minimize — (Contoh: Jika Ada/Terjadi = Skor 1, Jika Tidak Ada/Tidak Terjadi = Skor 4)
+            </option>
+          </select>
+        </div>
+
+        <!-- Scoring Tertimbang — tidak butuh field tambahan di sini. Target
+             Indikator 1 (Posisi Akhir) memakai Target KPI yang ada; Rata-rata
+             Harian (Indikator 2) dimasukkan langsung sebagai persentase saat
+             penginputan penilaian, bukan konfigurasi per-KPI. -->
+        <div class="col-12 polarity-field" data-for="tertimbang">
+          <div class="alert py-2 mb-0" style="font-size:11px;background:#E6F1FB;border:1px solid #2E75B6;color:#1F4E79">
+            Skor Akhir = Skor Indikator (dari Realisasi/Target di atas) × Pengkali
+            (dari persentase Rata-rata Harian yang diinput saat penilaian).
+            Tidak ada konfigurasi tambahan yang perlu diisi di sini.
+          </div>
         </div>
       </div>
       <hr class="my-3">
@@ -153,3 +218,24 @@
 })();
 </script>
 <?php endif; ?>
+<script>
+(function () {
+    const selPolarity = document.getElementById('sel-polarity');
+    if (!selPolarity) return;
+
+    function toggleFields() {
+        const polarity = selPolarity.value;
+        document.querySelectorAll('.polarity-field').forEach(function (el) {
+            const forList = (el.getAttribute('data-for') || '').split(',');
+            const active  = forList.includes(polarity);
+            el.style.display = active ? '' : 'none';
+            el.querySelectorAll('input, select').forEach(function (field) {
+                field.disabled = !active;
+            });
+        });
+    }
+
+    selPolarity.addEventListener('change', toggleFields);
+    toggleFields();
+})();
+</script>

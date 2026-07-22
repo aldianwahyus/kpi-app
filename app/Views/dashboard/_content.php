@@ -122,7 +122,7 @@
         ?>
         <?php foreach ($grade_info as $g => $info): ?>
         <div class="col-3 text-center">
-          <div style="font-size:18px;font-weight:700;color:<?= $info['bg'] === '#1F4E79' ? '#1F4E79' : $info['color'] ?>">
+          <div style="font-size:18px;font-weight:700;color:<?= $info['bg'] ?>">
             <?= $grade_counts[$g] ?? 0 ?>
           </div>
           <div style="font-size:10px;color:#888"><?= $g ?> — <?= $info['label'] ?></div>

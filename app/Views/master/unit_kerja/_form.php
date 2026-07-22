@@ -8,6 +8,16 @@
   </h5>
 </div>
 
+<?php if (session()->getFlashdata('errors')): ?>
+  <div class="alert alert-danger py-2" style="font-size:13px">
+    <ul class="mb-0">
+      <?php foreach (session()->getFlashdata('errors') as $e): ?>
+        <li><?= esc($e) ?></li>
+      <?php endforeach; ?>
+    </ul>
+  </div>
+<?php endif; ?>
+
 <div class="card border-0 shadow-sm" style="max-width:550px">
   <div class="card-body">
     <form action="<?= $action ?>" method="post">

@@ -15,11 +15,11 @@
     td { padding: 5px 8px; border-bottom: 0.5px solid #e0e0e0; font-size: 10px; }
     tr:nth-child(even) td { background: #f5f8fc; }
 
-    /* ── FIX: Update Class CSS Warna Skema Grade Baru ── */
-    .grade-M  { background: #1F4E79 !important; color: white; font-weight: bold; }
-    .grade-SB { background: #E2EFDA !important; color: #375623; font-weight: bold; }
-    .grade-B  { background: #DEEBF7 !important; color: #1F4E79; font-weight: bold; }
-    .grade-C  { background: #FFF2CC !important; color: #7F6000; font-weight: bold; }
+    /* Warna sesuai skema kriteria pencapaian (Istimewa/Baik/Cukup/Kurang) */
+    .grade-IS { background: #1E7A55 !important; color: white; font-weight: bold; }
+    .grade-SB { background: #A9D18E !important; color: #1E4620; font-weight: bold; }
+    .grade-B  { background: #FFC000 !important; color: #7F6000; font-weight: bold; }
+    .grade-C  { background: #FCE4D6 !important; color: #C00000; font-weight: bold; }
 
     .text-center { text-align: center; }
     .text-right  { text-align: right; }
@@ -59,9 +59,9 @@ $min   = $total > 0 ? round(min(array_column($rekap,'nilai_akhir')),2) : 0;
       <span style="font-size:16px; color:#C00000; font-weight:bold"><?= $min ?></span>
     </td>
     
-    <td style="padding:4px 8px; border:1px solid #dde; text-align:center;" class="grade-M">
-      <b>Grade M</b><br>
-      <span style="font-size:16px;"><?= $distribusi['M'] ?? 0 ?></span>
+    <td style="padding:4px 8px; border:1px solid #dde; text-align:center;" class="grade-IS">
+      <b>Grade IS</b><br>
+      <span style="font-size:16px;"><?= $distribusi['IS'] ?? 0 ?></span>
     </td>
     <td style="padding:4px 8px; border:1px solid #dde; text-align:center;" class="grade-SB">
       <b>Grade SB</b><br>

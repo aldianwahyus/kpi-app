@@ -44,19 +44,32 @@ Dua skema perhitungan berbeda tergantung level:
 
 | Level | Fungsi | Skala | Catatan |
 |---|---|---|---|
-| KPI Pegawai (individu) | `hitungSkorCapaian()` | Skor 10–100 (atau sampai 150 jika tidak di-cap) | Skor lantai 10 jika target belum diisi atau capaian sangat buruk |
-| KPI Unit/Divisi | `hitungCapaian()` | Rasio 0–1.5 (0%–150%) | Dipakai untuk agregat performa unit, tanpa skala 10-100 |
+| KPI Pegawai (individu) | `hitungSkorCapaian()` | Skor band diskrit **1–4** (bukan kontinu) | Dipetakan dari % pencapaian lewat Kriteria Pencapaian (lihat di bawah) |
+| KPI Unit/Divisi | `hitungCapaian()` | Rasio 0–1.5 (0%–150%) | Tidak berubah — dipakai untuk agregat performa unit, terpisah dari skema KPI Pegawai |
 
-**KPI dengan Parameter Turunan** menggunakan validasi *all-or-nothing*: seluruh Turunan harus terisi sebelum KPI Induk-nya bisa disimpan (skor parsial tidak diperbolehkan, karena akan menyesatkan). Skor Induk = rata-rata tertimbang dari kontribusi seluruh Turunan.
+**Kriteria Pencapaian → Skor** (KPI Pegawai), berlaku sama untuk polaritas *max* (formula: Realisasi/Target×100%) maupun *min* (formula: Target/Realisasi×100%):
 
-**Grade akhir** ditentukan dari nilai akhir gabungan seluruh KPI pegawai (skala 0-100):
+| Pencapaian | Skor |
+|---|---|
+| > 110% dari target | 4 |
+| 100% s.d. 110% dari target | 3 |
+| 80% s.d. <100% dari target | 2 |
+| < 80% dari target | 1 |
 
-| Grade | Label | Rentang Nilai |
+Kasus khusus: realisasi = 0 pada KPI *min* (mis. 0 kasus fraud) langsung dipetakan ke **Skor 4** (capaian terbaik, menghindari pembagian dengan nol); target belum diisi (target = 0) dipetakan ke **Skor 1** (belum bisa dinilai).
+
+**Nilai** per KPI = Skor (identik, tanpa transformasi tambahan). **Kontribusi** = Nilai × Bobot. Karena Bobot per pegawai selalu berjumlah 100%, **Nilai Akhir** (jumlah seluruh Kontribusi) berkisar **1.00–4.00**.
+
+**KPI dengan Parameter Turunan** menggunakan validasi *all-or-nothing*: seluruh Turunan harus terisi sebelum KPI Induk-nya bisa disimpan (skor parsial tidak diperbolehkan, karena akan menyesatkan). Skor Induk = rata-rata tertimbang dari kontribusi seluruh Turunan (dibatasi ke rentang 1–4 yang sama).
+
+**Grade akhir (Yudisium)** ditentukan dari Nilai Akhir/Kriteria Bobot Tertimbang α (skala 1.00–4.00). Batas bawah tiap pita **eksklusif**, batas atas **inklusif** — tepat di ambang batas masuk pita di bawahnya, bukan pita di atasnya:
+
+| Grade | Label | Rentang α |
 |---|---|---|
-| M | Memuaskan | ≥ 91.00 |
-| SB | Sangat Baik | 81.00 – 90.99 |
-| B | Baik | 71.00 – 80.99 |
-| C | Cukup | < 71.00 |
+| IS | Istimewa | 3,5 < α ≤ 4,0 |
+| SB | Sangat Baik | 2,5 < α ≤ 3,5 |
+| B | Baik | 1,5 < α ≤ 2,5 |
+| C | Cukup | α ≤ 1,5 |
 
 ### 1.4 Alur Status Penilaian
 

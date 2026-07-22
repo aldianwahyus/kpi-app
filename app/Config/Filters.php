@@ -83,6 +83,19 @@ class Filters extends BaseFilters
         ],
     ];
 
+    public function __construct()
+    {
+        parent::__construct();
+
+        // Nonaktifkan CSRF hanya saat automated test (PHPUnit selalu men-set
+        // ENVIRONMENT='testing' terlepas dari CI_ENVIRONMENT di .env) — supaya
+        // feature test bisa mensimulasikan POST tanpa boilerplate token di
+        // setiap request. Tidak berdampak pada environment production/development.
+        if (ENVIRONMENT === 'testing') {
+            $this->globals['before'] = array_values(array_diff($this->globals['before'], ['csrf']));
+        }
+    }
+
     /**
      * List of filter aliases that works on a
      * particular HTTP method (GET, POST, etc.).

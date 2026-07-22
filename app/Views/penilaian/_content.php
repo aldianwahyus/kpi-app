@@ -81,25 +81,25 @@ foreach ($pegawai as $p) {
           // Mengikuti matriks: Drafter & Approver melihat informasi dan tombol
           // yang berbeda pada status yang sama, sesuai ketentuan alur approval.
           if (!$sudahDiisi || $status === 'draft') {
-              $statusLabel = 'Belum Dilakukan Penginputan Penilaian';
+              $statusLabel = 'DRAFT — Belum disubmit';
               $statusBg    = '#f0f0f0';
               $statusColor = '#888';
               $aksiDrafter  = ['label' => $sudahDiisi ? 'Update' : 'Input', 'icon' => 'ti-edit',  'class' => 'btn-primary'];
               $aksiApprover = null; // Approver belum bisa apa-apa, belum disubmit
           } elseif ($status === 'submitted') {
-              $statusLabel = 'Draft';
+              $statusLabel = 'SUBMITTED — Menunggu Approval';
               $statusBg    = '#FFF3CD';
               $statusColor = '#7F6000';
               $aksiDrafter  = ['label' => 'Lihat', 'icon' => 'ti-eye', 'class' => 'btn-outline-secondary'];
               $aksiApprover = ['label' => 'Review', 'icon' => 'ti-checklist', 'class' => 'btn-warning'];
           } elseif ($status === 'approved') {
-              $statusLabel = 'Sudah Disetujui';
+              $statusLabel = 'APPROVED — Disetujui';
               $statusBg    = '#C6EFCE';
               $statusColor = '#375623';
               $aksiDrafter  = ['label' => 'Lihat', 'icon' => 'ti-eye', 'class' => 'btn-outline-secondary'];
               $aksiApprover = ['label' => 'Lihat', 'icon' => 'ti-eye', 'class' => 'btn-outline-secondary'];
           } elseif ($status === 'rejected') {
-              $statusLabel = 'Ditolak — Perlu Diperbaiki';
+              $statusLabel = 'REJECTED — Ditolak';
               $statusBg    = '#FCE4D6';
               $statusColor = '#C00000';
               $aksiDrafter  = ['label' => 'Update', 'icon' => 'ti-edit', 'class' => 'btn-danger'];
@@ -121,9 +121,15 @@ foreach ($pegawai as $p) {
           <td class="text-muted"><?= esc($p['jabatan'] ?? '—') ?></td>
           <td class="text-center">
             <?php $jumlahSetup = $kpiSetupCount[$p['id']] ?? 0; ?>
-            <?php if ($jumlahSetup > 0): ?>
+            <?php $bobotTotal  = $kpiBobotTotal[$p['id']] ?? 0; ?>
+            <?php if ($jumlahSetup > 0 && round($bobotTotal, 2) == 1.00): ?>
               <span class="badge" style="background:#C6EFCE;color:#375623;font-size:11px">
                 ✓ <?= $jumlahSetup ?> KPI
+              </span>
+            <?php elseif ($jumlahSetup > 0): ?>
+              <span class="badge" style="background:#FCE4D6;color:#C00000;font-size:11px"
+                    title="Total bobot KPI belum 100%, penginputan penilaian belum bisa dilakukan">
+                Bobot <?= round($bobotTotal * 100, 2) ?>%
               </span>
             <?php else: ?>
               <span class="badge" style="background:#FCE4D6;color:#C00000;font-size:11px"

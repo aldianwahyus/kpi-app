@@ -90,21 +90,42 @@ $persp_colors = [
           <!-- <td class="text-center fw-semibold" style="color:#1F4E79">
             <?= round($kpi['bobot'] * 100, 2) ?>%
           </td> -->
+          <?php
+            $polarityBadges = [
+                'max'        => ['↑ Max', '#E2EFDA', '#375623'],
+                'min'        => ['↓ Min', '#FCE4D6', '#C00000'],
+                'precise'    => ['◎ Precise is Better', '#DDEBF7', '#1F4E79'],
+                'special'    => ['⚑ Special Scoring', '#FFF2CC', '#7F6000'],
+                'tertimbang' => ['⚖ Scoring Tertimbang', '#E4DFEC', '#5C2A6B'],
+            ];
+            [$pLabel, $pBg, $pColor] = $polarityBadges[$kpi['polarity']] ?? ['—', '#f0f0f0', '#888'];
+          ?>
           <td class="text-center">
-            <span class="badge"
-              style="background:<?= $kpi['polarity']==='max'?'#E2EFDA':'#FCE4D6' ?>;
-                     color:<?= $kpi['polarity']==='max'?'#375623':'#C00000' ?>;
-                     font-size:11px">
-              <?= $kpi['polarity']==='max' ? '↑ Max' : '↓ Min' ?>
+            <span class="badge" style="background:<?= $pBg ?>;color:<?= $pColor ?>;font-size:11px">
+              <?= $pLabel ?>
             </span>
           </td>
           <td class="text-center">
-            <span class="badge"
-              style="background:<?= $kpi['perubahan_polarity']==='pos'?'#E2EFDA':'#FCE4D6' ?>;
-                     color:<?= $kpi['perubahan_polarity']==='pos'?'#375623':'#C00000' ?>;
-                     font-size:11px">
-              <?= $kpi['perubahan_polarity']==='pos' ? 'Positif' : 'Negatif' ?>
-            </span>
+            <?php if (in_array($kpi['polarity'], ['max', 'min'], true)): ?>
+              <span class="badge"
+                style="background:<?= $kpi['perubahan_polarity']==='pos'?'#E2EFDA':'#FCE4D6' ?>;
+                       color:<?= $kpi['perubahan_polarity']==='pos'?'#375623':'#C00000' ?>;
+                       font-size:11px">
+                <?= $kpi['perubahan_polarity']==='pos' ? 'Positif' : 'Negatif' ?>
+              </span>
+            <?php elseif ($kpi['polarity'] === 'precise'): ?>
+              <span class="text-muted" style="font-size:10px">
+                ±<?= esc($kpi['toleransi_skor4'] ?? '-') ?>/±<?= esc($kpi['toleransi_skor3'] ?? '-') ?>/±<?= esc($kpi['toleransi_skor2'] ?? '-') ?>%
+              </span>
+            <?php elseif ($kpi['polarity'] === 'special'): ?>
+              <span class="text-muted" style="font-size:10px">
+                Sifat: <?= $kpi['sifat_khusus'] === 'minimize' ? 'Minimize' : 'Maximize' ?>
+              </span>
+            <?php elseif ($kpi['polarity'] === 'tertimbang'): ?>
+              <span class="text-muted" style="font-size:10px">Skor × Pengkali Harian</span>
+            <?php else: ?>
+              <span class="text-muted" style="font-size:10px">—</span>
+            <?php endif; ?>
           </td>
           <td class="text-center">
             <div class="d-flex gap-1 justify-content-center">

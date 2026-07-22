@@ -88,9 +88,15 @@
                 <code><?= esc($kpi['kode']) ?></code>
                 &nbsp;·&nbsp; <?= esc($kpi['satuan']) ?>
                 &nbsp;·&nbsp;
-                <span style="color:<?= $kpi['polarity']==='max' ? '#375623' : '#C00000' ?>">
-                  <?= $kpi['polarity']==='max' ? '↑ Max' : '↓ Min' ?>
-                  (<?= $kpi['perubahan_polarity'] === 'pos' ? 'Positif' : 'Negatif' ?>)
+                <?php
+                  $kdPolarityLabels = ['max'=>['↑ Max','#375623'],'min'=>['↓ Min','#C00000'],'precise'=>['◎ Precise','#1F4E79'],'special'=>['⚑ Special','#7F6000'],'tertimbang'=>['⚖ Tertimbang','#5C2A6B']];
+                  [$kdLabel, $kdColor] = $kdPolarityLabels[$kpi['polarity']] ?? ['—', '#888'];
+                ?>
+                <span style="color:<?= $kdColor ?>">
+                  <?= $kdLabel ?>
+                  <?php if (in_array($kpi['polarity'], ['max', 'min'], true)): ?>
+                    (<?= $kpi['perubahan_polarity'] === 'pos' ? 'Positif' : 'Negatif' ?>)
+                  <?php endif; ?>
                 </span>
               </div>
             </div>
@@ -194,8 +200,9 @@
                 <code><?= esc($kpi['kode']) ?></code>
                 &nbsp;·&nbsp; <?= esc($kpi['satuan']) ?>
                 &nbsp;·&nbsp;
-                <span style="color:<?= $kpi['polarity']==='max'?'#375623':'#C00000' ?>">
-                    <?= $kpi['polarity']==='max' ? '↑' : '↓' ?>
+                <?php $kdIcons = ['max'=>['↑','#375623'],'min'=>['↓','#C00000'],'precise'=>['◎','#1F4E79'],'special'=>['⚑','#7F6000'],'tertimbang'=>['⚖','#5C2A6B']]; [$kdIcon,$kdIconColor] = $kdIcons[$kpi['polarity']] ?? ['—','#888']; ?>
+                <span style="color:<?= $kdIconColor ?>">
+                    <?= $kdIcon ?>
                 </span>
                 </div>
             </div>

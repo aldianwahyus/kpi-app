@@ -52,8 +52,8 @@ class DashboardController extends BaseController
         $belumDinilai  = 0;
         $topPegawai    = [];
         
-        // PERBAIKAN: Inisialisasi array menggunakan format Grade Baru (M, SB, B, C)
-        $gradeCounts   = ['M' => 0, 'SB' => 0, 'B' => 0, 'C' => 0];
+        // Grade sesuai skema kriteria pencapaian (Istimewa/Baik/Cukup/Kurang)
+        $gradeCounts   = ['IS' => 0, 'SB' => 0, 'B' => 0, 'C' => 0];
         
         $avgFinancial  = 0;
         $avgCustomer   = 0;

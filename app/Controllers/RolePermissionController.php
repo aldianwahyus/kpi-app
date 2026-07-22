@@ -15,7 +15,7 @@ class RolePermissionController extends BaseController
         $this->permissionModel = new RolePermissionModel();
     }
 
-    public function index(): string
+    public function index()
     {
         if (session()->get('role') !== 'admin') {
             return $this->forbidden('Hanya Administrator yang dapat mengakses Hak Akses Role.');

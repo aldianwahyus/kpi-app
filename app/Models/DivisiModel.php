@@ -8,7 +8,7 @@ class DivisiModel extends Model
     protected $table         = 'divisi';
     protected $primaryKey    = 'id';
     protected $allowedFields = [
-        'kode', 'nama', 'deskripsi',
+        'kode', 'nama', 'deskripsi', 'direktorat_id',
         'kepala_divisi', 'is_active',
     ];
     protected $useTimestamps = true;

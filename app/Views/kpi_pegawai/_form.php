@@ -101,15 +101,25 @@
                 <div class="fw-semibold" style="font-size:13px">
                   <?= esc($kpi['nama_kpi']) ?>
                 </div>
+                <?php
+                  $polarityLabels = [
+                      'max'        => ['↑ Max', '#375623'],
+                      'min'        => ['↓ Min', '#C00000'],
+                      'precise'    => ['◎ Precise is Better', '#1F4E79'],
+                      'special'    => ['⚑ Special Scoring', '#7F6000'],
+                      'tertimbang' => ['⚖ Scoring Tertimbang', '#5C2A6B'],
+                  ];
+                  [$polarityLabel, $polarityColor] = $polarityLabels[$kpi['polarity']] ?? ['—', '#888'];
+                ?>
                 <div style="font-size:11px;color:#888">
                   <code><?= esc($kpi['kode']) ?></code>
                   &nbsp;·&nbsp; <?= esc($kpi['satuan']) ?>
                   &nbsp;·&nbsp;
-                  <span style="color:<?= $kpi['polarity']==='max'
-                      ? '#375623' : '#C00000' ?>">
-                    <?= $kpi['polarity']==='max' ? '↑ Max' : '↓ Min' ?>
-                    (<?= $kpi['perubahan_polarity']==='pos'
-                        ? 'Positif' : 'Negatif' ?>)
+                  <span style="color:<?= $polarityColor ?>">
+                    <?= $polarityLabel ?>
+                    <?php if (in_array($kpi['polarity'], ['max', 'min'], true)): ?>
+                      (<?= $kpi['perubahan_polarity']==='pos' ? 'Positif' : 'Negatif' ?>)
+                    <?php endif; ?>
                   </span>
                   <?php if ($punyaTurunan): ?>
                     &nbsp;·&nbsp;
@@ -125,24 +135,44 @@
                    dengan nama KPI) agar tidak berdesakan/terpotong pada
                    lebar kolom yang tersedia. -->
               <div class="d-flex align-items-center gap-2 flex-wrap">
+                <?php $kpiPolarityTarget = $kpi['polarity'] ?? 'max'; ?>
                 <!-- Input Target — pagu/plafon yang ditentukan manual oleh
                      Admin. Begitu memiliki Parameter Turunan, field ini
                      terkunci (readonly) agar tidak diubah sembarangan tanpa
                      menyesuaikan Turunannya — perilakunya sama persis
-                     dengan field Bobot di sebelahnya. -->
+                     dengan field Bobot di sebelahnya. Untuk 'special',
+                     Target tidak dipakai sama sekali oleh perhitungan
+                     (penilaian bersifat Ada/Tidak Ada) sehingga dikunci
+                     agar tidak menyesatkan Admin mengisi angka yang tak
+                     bermakna — tetap harus tampil (bukan disabled/hilang)
+                     supaya urutan index array target[] tidak bergeser
+                     dari kp_id[]/bobot[] saat disimpan. -->
                 <div style="width:130px">
                   <div class="input-group input-group-sm">
-                    <span class="input-group-text bg-light text-muted" style="font-size:10px; padding: 2px 5px;">Trg</span>
+                    <span class="input-group-text bg-light text-muted" style="font-size:10px; padding: 2px 5px;">
+                      <?= $kpiPolarityTarget === 'tertimbang' ? 'Trg Akhir' : 'Trg' ?>
+                    </span>
                     <input type="number"
                            name="target[]"
                            class="form-control text-center"
-                           value="<?= esc($kpi['target'] ?? '100.00') ?>"
+                           value="<?= $kpiPolarityTarget === 'special' ? '' : esc($kpi['target'] ?? '100.00') ?>"
                            step="any" min="0"
-                           placeholder="100" required
-                           <?= $punyaTurunan ? 'readonly style="background:#f8f9fa;cursor:not-allowed"' : '' ?>
-                           title="<?= $punyaTurunan ? 'Tidak dapat diubah karena sudah memiliki Parameter Turunan' : '' ?>">
+                           placeholder="<?= $kpiPolarityTarget === 'special' ? '-' : '100' ?>"
+                           <?= $kpiPolarityTarget === 'special' ? '' : 'required' ?>
+                           <?= ($punyaTurunan || $kpiPolarityTarget === 'special') ? 'readonly style="background:#f8f9fa;cursor:not-allowed"' : '' ?>
+                           title="<?= $kpiPolarityTarget === 'special'
+                                        ? 'Tidak digunakan untuk Special Scoring (penilaian Ada/Tidak Ada)'
+                                        : ($punyaTurunan ? 'Tidak dapat diubah karena sudah memiliki Parameter Turunan' : '') ?>">
                   </div>
+                  <?php if ($kpiPolarityTarget === 'special'): ?>
+                    <div class="form-text" style="font-size:9px;color:#888">Tidak diperlukan (Special Scoring)</div>
+                  <?php elseif ($kpiPolarityTarget === 'tertimbang'): ?>
+                    <div class="form-text" style="font-size:9px;color:#888">
+                      Untuk Indikator 1. Indikator 2 (Harian) diisi % langsung saat penilaian.
+                    </div>
+                  <?php endif; ?>
                 </div>
+
 
                 <!-- Input bobot — readonly apabila sudah memiliki Turunan,
                      karena Bobot Turunan adalah pecahan dari Bobot Induk ini -->
@@ -227,7 +257,9 @@
                   <?php foreach ($turunanList as $t): ?>
                   <tr>
                     <td style="border-bottom:1px solid #f0f0f0"><i class="ti ti-corner-down-right me-1" style="color:#aaa"></i><?= esc($t['nama_turunan']) ?></td>
-                    <td class="text-center" style="border-bottom:1px solid #f0f0f0"><?= number_format((float)$t['target'], 2) ?></td>
+                    <td class="text-center" style="border-bottom:1px solid #f0f0f0">
+                      <?= ($t['polarity'] ?? 'max') === 'special' ? '—' : number_format((float)$t['target'], 2) ?>
+                    </td>
                     <td class="text-center" style="border-bottom:1px solid #f0f0f0">
                       <?= round((float)$t['bobot']*100, 2) ?>%
                     </td>
@@ -332,12 +364,12 @@
                   </div>
                   <div class="row g-2 mb-2">
                     <div class="col-6">
-                      <label class="form-label fw-semibold small">
-                        Target <span class="text-danger">*</span>
+                      <label class="form-label fw-semibold small turunan-target-label">
+                        Target <span class="text-danger turunan-target-required">*</span>
                       </label>
-                      <input type="number" name="target" class="form-control form-control-sm"
+                      <input type="number" name="target" class="form-control form-control-sm turunan-target-input"
                              step="any" min="0" placeholder="100" required>
-                      <div class="form-text" style="font-size:10px">Bebas — sesuai satuan Turunan ini</div>
+                      <div class="form-text turunan-target-hint" style="font-size:10px">Bebas — sesuai satuan Turunan ini</div>
                     </div>
                     <div class="col-6">
                       <label class="form-label fw-semibold small">
@@ -348,16 +380,21 @@
                     </div>
                   </div>
                   <div class="row g-2 mb-2">
-                    <div class="col-6">
+                    <div class="col-12">
                       <label class="form-label fw-semibold small">
                         Polarity <span class="text-danger">*</span>
                       </label>
-                      <select name="polarity" class="form-select form-select-sm">
+                      <select name="polarity" class="form-select form-select-sm sel-polarity-turunan">
                         <option value="max">↑ Max (lebih besar lebih baik)</option>
                         <option value="min">↓ Min (lebih kecil lebih baik)</option>
+                        <option value="precise">◎ Precise is Better</option>
+                        <option value="special">⚑ Special Scoring</option>
+                        <option value="tertimbang">⚖ Scoring Tertimbang</option>
                       </select>
                     </div>
-                    <div class="col-6">
+                  </div>
+                  <div class="row g-2 mb-2 polarity-field" data-for="max,min">
+                    <div class="col-12">
                       <label class="form-label fw-semibold small">
                         Perubahan Polarity <span class="text-danger">*</span>
                       </label>
@@ -365,6 +402,39 @@
                         <option value="pos">Positif</option>
                         <option value="neg">Negatif</option>
                       </select>
+                    </div>
+                  </div>
+                  <div class="mb-2 polarity-field" data-for="precise">
+                    <div class="alert py-2 mb-2" style="font-size:10px;background:#E6F1FB;border:1px solid #2E75B6;color:#1F4E79">
+                      Toleransi deviasi (%) dari target, simetris. Skor 1 otomatis di luar Toleransi Skor 2.
+                    </div>
+                    <div class="row g-2">
+                      <div class="col-4">
+                        <label class="form-label fw-semibold small">Skor 4 (±%)</label>
+                        <input type="number" name="toleransi_skor4" class="form-control form-control-sm" step="any" min="0" placeholder="2.5">
+                      </div>
+                      <div class="col-4">
+                        <label class="form-label fw-semibold small">Skor 3 (±%)</label>
+                        <input type="number" name="toleransi_skor3" class="form-control form-control-sm" step="any" min="0" placeholder="7.5">
+                      </div>
+                      <div class="col-4">
+                        <label class="form-label fw-semibold small">Skor 2 (±%)</label>
+                        <input type="number" name="toleransi_skor2" class="form-control form-control-sm" step="any" min="0" placeholder="12.5">
+                      </div>
+                    </div>
+                  </div>
+                  <div class="row g-2 mb-2 polarity-field" data-for="special">
+                    <div class="col-12">
+                      <label class="form-label fw-semibold small">Sifat <span class="text-danger">*</span></label>
+                      <select name="sifat_khusus" class="form-select form-select-sm">
+                        <option value="maximize">Maximize — (Contoh: Jika Ada/Terealisasi = Skor 4, Jika Tidak Ada/Tidak Terealisasi = Skor 1)</option>
+                        <option value="minimize">Minimize — (Contoh: Jika Ada/Terjadi = Skor 1, Jika Tidak Ada/Tidak Terjadi = Skor 4)</option>
+                      </select>
+                    </div>
+                  </div>
+                  <div class="mb-2 polarity-field" data-for="tertimbang">
+                    <div class="alert py-2 mb-0" style="font-size:10px;background:#E6F1FB;border:1px solid #2E75B6;color:#1F4E79">
+                      Skor Akhir = Skor Indikator (Realisasi/Target) × Pengkali (dari persentase Rata-rata Harian saat penilaian). Tidak ada konfigurasi tambahan di sini.
                     </div>
                   </div>
                   <div class="row g-2">
@@ -432,13 +502,13 @@
                   </div>
                   <div class="row g-2 mb-2">
                     <div class="col-6">
-                      <label class="form-label fw-semibold small">
-                        Target <span class="text-danger">*</span>
+                      <label class="form-label fw-semibold small turunan-target-label">
+                        Target <span class="text-danger turunan-target-required">*</span>
                       </label>
-                      <input type="number" name="target" class="form-control form-control-sm"
-                             value="<?= esc($t['target']) ?>"
-                             step="any" min="0" required>
-                      <div class="form-text" style="font-size:10px">Bebas — sesuai satuan Turunan ini</div>
+                      <input type="number" name="target" class="form-control form-control-sm turunan-target-input"
+                             value="<?= esc($t['polarity'] === 'special' ? '' : $t['target']) ?>"
+                             step="any" min="0" <?= $t['polarity'] === 'special' ? '' : 'required' ?>>
+                      <div class="form-text turunan-target-hint" style="font-size:10px">Bebas — sesuai satuan Turunan ini</div>
                     </div>
                     <div class="col-6">
                       <label class="form-label fw-semibold small">Satuan</label>
@@ -448,16 +518,21 @@
                     </div>
                   </div>
                   <div class="row g-2 mb-2">
-                    <div class="col-6">
+                    <div class="col-12">
                       <label class="form-label fw-semibold small">
                         Polarity <span class="text-danger">*</span>
                       </label>
-                      <select name="polarity" class="form-select form-select-sm">
-                        <option value="max" <?= ($t['polarity'] ?? 'max') === 'max' ? 'selected' : '' ?>>↑ Max (lebih besar lebih baik)</option>
-                        <option value="min" <?= ($t['polarity'] ?? 'max') === 'min' ? 'selected' : '' ?>>↓ Min (lebih kecil lebih baik)</option>
+                      <select name="polarity" class="form-select form-select-sm sel-polarity-turunan">
+                        <option value="max"        <?= ($t['polarity'] ?? 'max') === 'max'        ? 'selected' : '' ?>>↑ Max (lebih besar lebih baik)</option>
+                        <option value="min"        <?= ($t['polarity'] ?? 'max') === 'min'        ? 'selected' : '' ?>>↓ Min (lebih kecil lebih baik)</option>
+                        <option value="precise"    <?= ($t['polarity'] ?? 'max') === 'precise'    ? 'selected' : '' ?>>◎ Precise is Better</option>
+                        <option value="special"    <?= ($t['polarity'] ?? 'max') === 'special'    ? 'selected' : '' ?>>⚑ Special Scoring</option>
+                        <option value="tertimbang" <?= ($t['polarity'] ?? 'max') === 'tertimbang' ? 'selected' : '' ?>>⚖ Scoring Tertimbang</option>
                       </select>
                     </div>
-                    <div class="col-6">
+                  </div>
+                  <div class="row g-2 mb-2 polarity-field" data-for="max,min">
+                    <div class="col-12">
                       <label class="form-label fw-semibold small">
                         Perubahan Polarity <span class="text-danger">*</span>
                       </label>
@@ -465,6 +540,42 @@
                         <option value="pos" <?= ($t['perubahan_polarity'] ?? 'pos') === 'pos' ? 'selected' : '' ?>>Positif</option>
                         <option value="neg" <?= ($t['perubahan_polarity'] ?? 'pos') === 'neg' ? 'selected' : '' ?>>Negatif</option>
                       </select>
+                    </div>
+                  </div>
+                  <div class="mb-2 polarity-field" data-for="precise">
+                    <div class="alert py-2 mb-2" style="font-size:10px;background:#E6F1FB;border:1px solid #2E75B6;color:#1F4E79">
+                      Toleransi deviasi (%) dari target, simetris. Skor 1 otomatis di luar Toleransi Skor 2.
+                    </div>
+                    <div class="row g-2">
+                      <div class="col-4">
+                        <label class="form-label fw-semibold small">Skor 4 (±%)</label>
+                        <input type="number" name="toleransi_skor4" class="form-control form-control-sm" step="any" min="0"
+                               value="<?= esc($t['toleransi_skor4'] ?? '') ?>" placeholder="2.5">
+                      </div>
+                      <div class="col-4">
+                        <label class="form-label fw-semibold small">Skor 3 (±%)</label>
+                        <input type="number" name="toleransi_skor3" class="form-control form-control-sm" step="any" min="0"
+                               value="<?= esc($t['toleransi_skor3'] ?? '') ?>" placeholder="7.5">
+                      </div>
+                      <div class="col-4">
+                        <label class="form-label fw-semibold small">Skor 2 (±%)</label>
+                        <input type="number" name="toleransi_skor2" class="form-control form-control-sm" step="any" min="0"
+                               value="<?= esc($t['toleransi_skor2'] ?? '') ?>" placeholder="12.5">
+                      </div>
+                    </div>
+                  </div>
+                  <div class="row g-2 mb-2 polarity-field" data-for="special">
+                    <div class="col-12">
+                      <label class="form-label fw-semibold small">Sifat <span class="text-danger">*</span></label>
+                      <select name="sifat_khusus" class="form-select form-select-sm">
+                        <option value="maximize" <?= ($t['sifat_khusus'] ?? 'maximize') === 'maximize' ? 'selected' : '' ?>>Maximize — (Contoh: Jika Ada/Terealisasi = Skor 4, Jika Tidak Ada/Tidak Terealisasi = Skor 1)</option>
+                        <option value="minimize" <?= ($t['sifat_khusus'] ?? 'maximize') === 'minimize' ? 'selected' : '' ?>>Minimize — (Contoh: Jika Ada/Terjadi = Skor 1, Jika Tidak Ada/Tidak Terjadi = Skor 4)</option>
+                      </select>
+                    </div>
+                  </div>
+                  <div class="mb-2 polarity-field" data-for="tertimbang">
+                    <div class="alert py-2 mb-0" style="font-size:10px;background:#E6F1FB;border:1px solid #2E75B6;color:#1F4E79">
+                      Skor Akhir = Skor Indikator (Realisasi/Target) × Pengkali (dari persentase Rata-rata Harian saat penilaian). Tidak ada konfigurasi tambahan di sini.
                     </div>
                   </div>
                   <div class="row g-2">
@@ -736,5 +847,46 @@ document.querySelectorAll('.target-turunan-input, .bobot-turunan-input').forEach
             }
         }
     });
+});
+
+// Tampilkan/sembunyikan field tambahan (Perubahan Polarity / Toleransi
+// Precise / Sifat Special / Target Harian Tertimbang) sesuai Polarity yang
+// dipilih pada tiap modal Tambah/Edit Parameter Turunan — di-scope per
+// modal (.modal-content) karena ada satu select serupa per KPI Induk.
+document.querySelectorAll('.sel-polarity-turunan').forEach(function (sel) {
+    const modalContent = sel.closest('.modal-content');
+    if (!modalContent) return;
+
+    function toggleTurunanFields() {
+        const polarity = sel.value;
+        modalContent.querySelectorAll('.polarity-field').forEach(function (el) {
+            const forList = (el.getAttribute('data-for') || '').split(',');
+            const active  = forList.includes(polarity);
+            el.style.display = active ? '' : 'none';
+            el.querySelectorAll('input, select').forEach(function (field) {
+                field.disabled = !active;
+            });
+        });
+
+        // Target tidak dipakai sama sekali untuk 'special' (penilaian
+        // Ada/Tidak Ada, bukan dibandingkan ke angka) — jadikan opsional
+        // dan kosongkan, alih-alih memaksa Admin mengisi angka yang tak
+        // bermakna. Untuk polarity lain, tetap wajib seperti semula.
+        const targetInput = modalContent.querySelector('.turunan-target-input');
+        const targetHint  = modalContent.querySelector('.turunan-target-hint');
+        const targetReq   = modalContent.querySelector('.turunan-target-required');
+        if (targetInput) {
+            const isSpecial = polarity === 'special';
+            targetInput.required = !isSpecial;
+            if (isSpecial) targetInput.value = '';
+            if (targetReq)  targetReq.style.display = isSpecial ? 'none' : '';
+            if (targetHint) targetHint.textContent = isSpecial
+                ? 'Tidak diperlukan (Special Scoring)'
+                : 'Bebas — sesuai satuan Turunan ini';
+        }
+    }
+
+    sel.addEventListener('change', toggleTurunanFields);
+    toggleTurunanFields();
 });
 </script>

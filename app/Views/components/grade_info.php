@@ -51,7 +51,7 @@ $gradeInfo  = $calculator->getGradeInfo();
           <td style="font-size:12px;color:#888">
             <?php
             $tindakLanjut = [
-                'M'  => 'Pertahankan & jadikan role model',
+                'IS' => 'Pertahankan & jadikan role model',
                 'SB' => 'Kembangkan potensi lebih lanjut',
                 'B'  => 'Coaching & monitoring berkala',
                 'C'  => 'Performance Improvement Plan (PIP)',

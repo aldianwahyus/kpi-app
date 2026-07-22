@@ -106,7 +106,8 @@
           <?php foreach ($kpis as $kpi): ?>
           <?php
           $ex  = $existing[$kpi['id']] ?? null;
-          $pol_color = $kpi['polarity']==='max' ? '#375623' : '#C00000';
+          $pol_icons = ['max'=>['↑','#375623'],'min'=>['↓','#C00000'],'precise'=>['◎','#1F4E79'],'special'=>['⚑','#7F6000'],'tertimbang'=>['⚖','#5C2A6B']];
+          [$pol_icon, $pol_color] = $pol_icons[$kpi['polarity']] ?? ['—', '#888'];
           ?>
           <tr>
             <td class="text-center">
@@ -126,7 +127,7 @@
             <td class="text-center">
               <span style="font-size:13px;font-weight:600;
                            color:<?= $pol_color ?>">
-                <?= $kpi['polarity']==='max' ? '↑' : '↓' ?>
+                <?= $pol_icon ?>
               </span>
             </td>
             <td>

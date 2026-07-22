@@ -11,6 +11,7 @@ class KpiPegawaiTurunanModel extends Model
         'kpi_pegawai_id', 'nama_turunan',
         'bobot', 'target', 'deskripsi_target',
         'polarity', 'perubahan_polarity', 'satuan',
+        'toleransi_skor4', 'toleransi_skor3', 'toleransi_skor2', 'sifat_khusus',
         'urutan', 'is_active',
     ];
     protected $useTimestamps = true;

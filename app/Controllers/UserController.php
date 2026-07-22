@@ -1,4 +1,5 @@
 <?php
+
 namespace App\Controllers;
 
 use App\Models\UserModel;
@@ -16,7 +17,7 @@ class UserController extends BaseController
     }
 
     // ── Daftar User ──────────────────────────────────────────
-    public function index(): string
+    public function index()
     {
         if (!in_array(session()->get('role'), ['admin', 'hr'])) return $this->forbidden();
 
@@ -47,7 +48,7 @@ class UserController extends BaseController
     }
 
     // ── Form Tambah ──────────────────────────────────────────
-    public function create(): string
+    public function create()
     {
         if (!in_array(session()->get('role'), ['admin', 'hr'])) return $this->forbidden();
 
@@ -66,20 +67,21 @@ class UserController extends BaseController
     {
         if (!in_array(session()->get('role'), ['admin', 'hr'])) return $this->forbidden();
 
+        // Validasi input dengan penambahan rule 'trim' untuk menangani whitespace
         if (!$this->validate([
-            'nama'     => 'required',
-            'email'    => 'required|valid_email|is_unique[users.email]',
+            'nama'     => 'required|trim',
+            'email'    => 'required|trim|valid_email|is_unique[users.email]',
             'password' => 'required|min_length[6]',
             'role'     => 'required|in_list[admin,hr,drafter,approver,pegawai]',
         ])) {
             return redirect()->back()->withInput()
-                             ->with('errors', $this->validator->getErrors());
+                ->with('errors', $this->validator->getErrors());
         }
 
         $this->userModel->insert([
             'pegawai_id'           => $this->request->getPost('pegawai_id') ?: null,
-            'nama'                 => $this->request->getPost('nama'),
-            'email'                => $this->request->getPost('email'),
+            'nama'                 => trim($this->request->getPost('nama')),
+            'email'                => trim($this->request->getPost('email')),
             'password'             => password_hash(
                 $this->request->getPost('password'),
                 PASSWORD_DEFAULT
@@ -90,18 +92,18 @@ class UserController extends BaseController
         ]);
 
         return redirect()->to(base_url('master/users'))
-                         ->with('success', 'User berhasil ditambahkan.');
+            ->with('success', 'User berhasil ditambahkan.');
     }
 
     // ── Form Edit ────────────────────────────────────────────
-    public function edit(int $id): string
+    public function edit(int $id)
     {
         if (!in_array(session()->get('role'), ['admin', 'hr'])) return $this->forbidden();
 
         $user = $this->userModel->find($id);
         if (!$user) {
             return redirect()->to(base_url('master/users'))
-                             ->with('error', 'User tidak ditemukan.');
+                ->with('error', 'User tidak ditemukan.');
         }
         unset($user['password']);
 
@@ -120,32 +122,32 @@ class UserController extends BaseController
     {
         if (!in_array(session()->get('role'), ['admin', 'hr'])) return $this->forbidden();
 
-        $emailRule = "required|valid_email|is_unique[users.email,id,$id]";
+        // Aturan email unique dengan pengecualian ID saat ini & penanganan whitespace
+        $emailRule = "required|trim|valid_email|is_unique[users.email,id,$id]";
 
         if (!$this->validate([
-            'nama'  => 'required',
+            'nama'  => 'required|trim',
             'email' => $emailRule,
             'role'  => 'required|in_list[admin,hr,drafter,approver,pegawai]',
         ])) {
             return redirect()->back()->withInput()
-                             ->with('errors', $this->validator->getErrors());
+                ->with('errors', $this->validator->getErrors());
         }
 
         $data = [
             'pegawai_id' => $this->request->getPost('pegawai_id') ?: null,
-            'nama'       => $this->request->getPost('nama'),
-            'email'      => $this->request->getPost('email'),
+            'nama'       => trim($this->request->getPost('nama')),
+            'email'      => trim($this->request->getPost('email')),
             'role'       => $this->request->getPost('role'),
-            // Tambahkan ini jika di form ada input status aktif
             'is_active'  => $this->request->getPost('is_active') !== null ? (int)$this->request->getPost('is_active') : 1,
         ];
 
         // Update password hanya jika diisi
-        $pwd = trim($this->request->getPost('password'));
-        if ($pwd) {
+        $pwd = trim($this->request->getPost('password') ?? '');
+        if ($pwd !== '') {
             if (strlen($pwd) < 6) {
                 return redirect()->back()->withInput()
-                                 ->with('error', 'Password minimal 6 karakter.');
+                    ->with('error', 'Password minimal 6 karakter.');
             }
             $data['password']             = password_hash($pwd, PASSWORD_DEFAULT);
             $data['must_change_password'] = 1;
@@ -154,7 +156,7 @@ class UserController extends BaseController
         $this->userModel->update($id, $data);
 
         return redirect()->to(base_url('master/users'))
-                         ->with('success', 'User berhasil diupdate.');
+            ->with('success', 'User berhasil diupdate.');
     }
 
     // ── Toggle Aktif ─────────────────────────────────────────
@@ -165,7 +167,7 @@ class UserController extends BaseController
         // Jangan nonaktifkan diri sendiri
         if ($id == session()->get('user_id')) {
             return redirect()->to(base_url('master/users'))
-                             ->with('error', 'Tidak bisa menonaktifkan akun sendiri.');
+                ->with('error', 'Tidak bisa menonaktifkan akun sendiri.');
         }
 
         $user = $this->userModel->find($id);
@@ -176,7 +178,7 @@ class UserController extends BaseController
         }
 
         return redirect()->to(base_url('master/users'))
-                         ->with('success', 'Status user diubah.');
+            ->with('success', 'Status user diubah.');
     }
 
     // ── Reset Password ───────────────────────────────────────
@@ -187,7 +189,7 @@ class UserController extends BaseController
         $user = $this->userModel->find($id);
         if (!$user) {
             return redirect()->to(base_url('master/users'))
-                             ->with('error', 'User tidak ditemukan.');
+                ->with('error', 'User tidak ditemukan.');
         }
 
         $defaultPwd = 'pegawai123';
@@ -197,9 +199,11 @@ class UserController extends BaseController
         ]);
 
         return redirect()->to(base_url('master/users'))
-                         ->with('success',
-                             "Password direset ke: <strong>$defaultPwd</strong>. "
-                             . "Pengguna wajib mengganti password ini saat login berikutnya.");
+            ->with(
+                'success',
+                "Password direset ke: <strong>$defaultPwd</strong>. "
+                    . "Pengguna wajib mengganti password ini saat login berikutnya."
+            );
     }
 
     // ── Hapus ────────────────────────────────────────────────
@@ -209,13 +213,13 @@ class UserController extends BaseController
 
         if ($id == session()->get('user_id')) {
             return redirect()->to(base_url('master/users'))
-                             ->with('error', 'Tidak bisa menghapus akun sendiri.');
+                ->with('error', 'Tidak bisa menghapus akun sendiri.');
         }
 
         $this->userModel->delete($id);
 
         return redirect()->to(base_url('master/users'))
-                         ->with('success', 'User berhasil dihapus.');
+            ->with('success', 'User berhasil dihapus.');
     }
 
     // ── Profil Sendiri ───────────────────────────────────────
@@ -243,7 +247,7 @@ class UserController extends BaseController
             'email' => "required|valid_email|is_unique[users.email,id,$userId]",
         ])) {
             return redirect()->back()->withInput()
-                             ->with('errors', $this->validator->getErrors());
+                ->with('errors', $this->validator->getErrors());
         }
 
         $data = [
@@ -255,7 +259,7 @@ class UserController extends BaseController
         if ($pwd) {
             if (strlen($pwd) < 6) {
                 return redirect()->back()
-                                 ->with('error', 'Password minimal 6 karakter.');
+                    ->with('error', 'Password minimal 6 karakter.');
             }
             $data['password']             = password_hash($pwd, PASSWORD_DEFAULT);
             // Hanya saat pemilik akun sendiri yang mengganti password,
@@ -276,15 +280,15 @@ class UserController extends BaseController
         }
 
         return redirect()->to(base_url('profil'))
-                         ->with('success', 'Profil berhasil diupdate.');
+            ->with('success', 'Profil berhasil diupdate.');
     }
 
     // ── Helper ───────────────────────────────────────────────
     private function getPegawaiDropdown(): array
     {
         $rows = $this->pegawaiModel->where('is_active', 1)
-                                   ->orderBy('nama', 'ASC')
-                                   ->findAll();
+            ->orderBy('nama', 'ASC')
+            ->findAll();
         $result = ['' => '-- Tidak terhubung ke pegawai --'];
         foreach ($rows as $r) {
             $result[$r['id']] = $r['nama'] . ($r['nip'] ? " ({$r['nip']})" : '');

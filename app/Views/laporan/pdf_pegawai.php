@@ -23,11 +23,11 @@
                     padding: 4px 8px; font-size: 10px;
                     border-left: 3px solid #2E75B6; margin: 8px 0 4px; }
 
-    /* ── FIX: Update Style Box Biodata Berdasarkan Grade Baru ── */
-    .grade-M  { background: #1F4E79 !important; color: white; }
-    .grade-SB { background: #E2EFDA !important; color: #375623; }
-    .grade-B  { background: #DEEBF7 !important; color: #1F4E79; }
-    .grade-C  { background: #FFF2CC !important; color: #7F6000; }
+    /* Warna box biodata sesuai skema kriteria pencapaian (Istimewa/Baik/Cukup/Kurang) */
+    .grade-IS { background: #1E7A55 !important; color: white; }
+    .grade-SB { background: #A9D18E !important; color: #1E4620; }
+    .grade-B  { background: #FFC000 !important; color: #7F6000; }
+    .grade-C  { background: #FCE4D6 !important; color: #C00000; }
 
     .cap-A { background: #C6EFCE; }
     .cap-B { background: #BDD7EE; }
@@ -65,7 +65,7 @@
     <td class="label">Capaian per Perspektif</td>
     <td>
       <?php foreach ($perspektifRekap as $pr): ?>
-        <?= esc($pr['perspektif']) ?>: <b><?= round($pr['avg_capaian'],1) ?>%</b> &nbsp;
+        <?= esc($pr['perspektif']) ?>: <b><?= round($pr['avg_capaian'],2) ?> / 4</b> &nbsp;
       <?php endforeach; ?>
     </td>
   </tr>
@@ -83,7 +83,7 @@ $persp_colors = [
 <?php foreach ($grouped as $perspektif => $kpis): ?>
 <?php $pc = $persp_colors[$perspektif] ?? ['f8f9fa','333','888']; ?>
 <div class="persp-header" style="background:#<?= $pc[0] ?>; color:#<?= $pc[1] ?>; border-left-color:#<?= $pc[2] ?>">
-  <?= esc($perspektif) ?> — Kontribusi: <?= round(array_sum(array_column($kpis,'nilai_kontribusi'))*100,2) ?>
+  <?= esc($perspektif) ?> — Kontribusi: <?= round(array_sum(array_column($kpis,'nilai_kontribusi')),2) ?>
 </div>
 
 <table class="kpi">
@@ -109,11 +109,23 @@ $persp_colors = [
       <td><b><?= esc($kpi['nama_kpi']) ?></b></td>
       <td style="text-align:center"><?= esc($kpi['kode']) ?></td>
       <td style="text-align:center"><?= round($kpi['bobot']*100,1) ?>%</td>
-      <td style="text-align:center"><?= $kpi['polarity']==='max' ? '↑' : '↓' ?></td>
-      <td style="text-align:center"><?= number_format($kpi['target'],2) ?></td>
-      <td style="text-align:center"><?= number_format($kpi['realisasi'],2) ?></td>
+      <?php
+        $pdfPolarityIcons = ['max'=>'↑','min'=>'↓','precise'=>'◎','special'=>'⚑','tertimbang'=>'⚖'];
+      ?>
+      <td style="text-align:center"><?= $pdfPolarityIcons[$kpi['polarity']] ?? '—' ?></td>
+      <td style="text-align:center"><?= $kpi['polarity'] === 'special' ? '—' : number_format($kpi['target'],2) ?></td>
+      <td style="text-align:center">
+        <?php if ($kpi['polarity'] === 'special'): ?>
+          <?= ((float)($kpi['realisasi'] ?? 0) == 1.0) ? 'Ada' : 'Tidak Ada' ?>
+        <?php elseif ($kpi['polarity'] === 'tertimbang'): ?>
+          <?= number_format((float)($kpi['realisasi'] ?? 0),2) ?> /
+          H: <?= number_format((float)($kpi['realisasi_harian'] ?? 0),2) ?>%
+        <?php else: ?>
+          <?= number_format($kpi['realisasi'],2) ?>
+        <?php endif; ?>
+      </td>
       <td style="text-align:center" class="<?= $capCls ?>"><b><?= round($cap*100,2) ?>%</b></td>
-      <td style="text-align:center"><?= round($kpi['nilai_kontribusi']*100,2) ?></td>
+      <td style="text-align:center"><?= round($kpi['nilai_kontribusi'],2) ?></td>
     </tr>
     <?php endforeach; ?>
   </tbody>

@@ -1,0 +1,14 @@
+version: '3.8'
+
+services:
+  ci4_app:
+    build: .
+    container_name: ci4_development_container
+    ports:
+      - "8000:80"  # Anda bisa mengakses aplikasi lewat http://localhost:8080
+    volumes:
+      - .:/var/www/html  # Melakukan sinkronisasi file codingan lokal ke dalam container
+    environment:
+      - CI_ENVIRONMENT=development
+    extra_hosts:
+      - "host.docker.internal:host-gateway" # Memastikan koneksi ke IP lokal PC lancar

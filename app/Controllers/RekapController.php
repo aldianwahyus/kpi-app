@@ -25,7 +25,7 @@ class RekapController extends BaseController
     }
 
     // ── Rekap semua pegawai ──────────────────────────────────
-    public function index(): string
+    public function index()
     {
         $check = $this->checkMenuAccess('penilaian');
         if ($check !== true) return $check;
@@ -137,7 +137,7 @@ class RekapController extends BaseController
     }
 
     // ── Detail penilaian satu pegawai ────────────────────────
-    public function detail(int $pegawaiId): string
+    public function detail(int $pegawaiId)
     {
         $check = $this->checkMenuAccess('penilaian');
         if ($check !== true) return $check;
@@ -212,12 +212,12 @@ class RekapController extends BaseController
             return [
                 'avg'   => 0, 'max' => 0, 'min' => 0,
                 'count' => 0,
-                'grade_counts' => ['M'=>0,'SB'=>0,'B'=>0,'C'=>0],
+                'grade_counts' => ['IS'=>0,'SB'=>0,'B'=>0,'C'=>0],
             ];
         }
 
         $values      = array_column($rekap, 'nilai_akhir');
-        $gradeCounts = ['M'=>0,'SB'=>0,'B'=>0,'C'=>0];
+        $gradeCounts = ['IS'=>0,'SB'=>0,'B'=>0,'C'=>0];
         foreach ($rekap as $r) {
             $g = $r['grade'] ?? '—';
             if (isset($gradeCounts[$g])) $gradeCounts[$g]++;

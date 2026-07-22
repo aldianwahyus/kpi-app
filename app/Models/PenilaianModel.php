@@ -10,7 +10,7 @@ class PenilaianModel extends Model
     protected $primaryKey    = 'id';
     protected $allowedFields = [
         'pegawai_id', 'kpi_id', 'periode_id',
-        'target', 'realisasi', 'skor', 'capaian',
+        'target', 'realisasi', 'realisasi_harian', 'skor', 'capaian',
         'nilai_kontribusi', 'catatan',
         'status', 'submitted_at',
         'approved_by', 'approved_at', 'reject_note',
@@ -52,7 +52,9 @@ class PenilaianModel extends Model
     public function getNilaiAkhir(int $pegawaiId, int $periodeId): float
     {
         $result = $this->db->table('penilaian p')
-            // HAPUS * 100: Karena nilai_kontribusi sudah dalam skala 0-100 (desimal)
+            // nilai_kontribusi = Skor band (1-4) x Bobot per KPI — SUM-nya
+            // langsung jadi Nilai Akhir pada skala 1.00-4.00 (bobot per
+            // pegawai selalu berjumlah 100%), tanpa perkalian tambahan.
             ->select('SUM(p.nilai_kontribusi) as total')
             ->join('kpi_pegawai kp', 'kp.kpi_id = p.kpi_id AND kp.pegawai_id = p.pegawai_id')
             ->where('p.pegawai_id', $pegawaiId)

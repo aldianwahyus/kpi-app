@@ -11,6 +11,8 @@ class KpiUnitModel extends Model
         'direktorat_id', 'perspektif', 'nama_kpi',
         'kode', 'satuan', 'bobot',
         'polarity', 'perubahan_polarity',
+        'toleransi_skor4', 'toleransi_skor3', 'toleransi_skor2',
+        'sifat_khusus',
         'is_active', 'urutan',
     ];
     protected $useTimestamps = true;

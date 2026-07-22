@@ -144,12 +144,12 @@
           $nilai = (float)$r['nilai_akhir'];
           $grade = $r['grade'] ?? '—';
           
-          // FIX: Menyesuaikan kode penentuan warna dengan standarisasi grade baru (M, SB, B, C)
+          // Kode warna mengikuti standarisasi grade Yudisium (IS, SB, B, C)
           $gc = match($grade) {
-              'M'  => ['#1F4E79', '#FFFFFF'], // Memuaskan: Biru Tua (Teks Putih)
-              'SB' => ['#E2EFDA', '#375623'], // Sangat Baik: Hijau Muda (Teks Hijau Tua)
-              'B'  => ['#DEEBF7', '#1F4E79'], // Baik: Biru Soft (Teks Biru)
-              'C'  => ['#FFF2CC', '#7F6000'], // Cukup: Kuning Soft (Teks Cokelat Tua)
+              'IS' => ['#1E7A55', '#FFFFFF'], // Istimewa: Hijau Tua (Teks Putih)
+              'SB' => ['#A9D18E', '#1E4620'], // Sangat Baik: Hijau Muda (Teks Hijau Tua)
+              'B'  => ['#FFC000', '#7F6000'], // Baik: Oranye (Teks Cokelat Tua)
+              'C'  => ['#FCE4D6', '#C00000'], // Cukup: Merah Soft (Teks Merah Tua)
               default => ['#f0f0f0', '#888888'],
           };
           ?>
@@ -189,7 +189,7 @@
               </div>
               <div class="progress mt-1" style="height:4px">
                 <div class="progress-bar"
-                     style="width:<?= min(100, $nilai) ?>%;
+                     style="width:<?= min(100, $nilai / 4 * 100) ?>%;
                             background:<?= $gc[0] // Warna Utama Grade ?>">
                 </div>
               </div>

@@ -37,8 +37,11 @@ class PenilaianController extends BaseController
         $this->auditLogModel   = new AuditLogModel();
     }
 
-    public function index(): string
-    {   
+    public function index()
+    {
+        $check = $this->checkMenuAccess('penilaian');
+        if ($check !== true) return $check;
+
         $periodeAktif = $this->periodeModel->getAktif();
         $role         = session()->get('role');
         $userPegawaiId= session()->get('pegawai_id');
@@ -90,6 +93,15 @@ class PenilaianController extends BaseController
             $kpiSetupCount[(int)$r['pegawai_id']] = (int)$r['jumlah'];
         }
 
+        // Total bobot KPI aktif per pegawai — dipakai di view untuk
+        // menandai pegawai yang KPI-nya sudah di-setup tapi bobotnya
+        // belum genap 100%, supaya terlihat sebelum masuk ke form
+        // (yang akan menolak penginputan selama bobot belum 100%).
+        $kpiBobotTotal = [];
+        foreach (array_keys($kpiSetupCount) as $pid) {
+            $kpiBobotTotal[$pid] = $this->kpiPegawaiModel->getTotalBobot($pid);
+        }
+
         return view('layouts/main', [
             'title'   => 'Input Penilaian KPI',
             'content' => view('penilaian/_content', [
@@ -98,12 +110,16 @@ class PenilaianController extends BaseController
                 'periodeAktif'  => $periodeAktif,
                 'role'          => $role,
                 'kpiSetupCount' => $kpiSetupCount,
+                'kpiBobotTotal' => $kpiBobotTotal,
             ]),
         ]);
     }
 
     public function form(int $pegawaiId)
     {
+        $check = $this->checkMenuAccess('penilaian');
+        if ($check !== true) return $check;
+
         if (!$this->canAccessPegawai($pegawaiId)) return $this->forbidden();
 
         $periodeAktif = $this->periodeModel->getAktif();
@@ -115,8 +131,22 @@ class PenilaianController extends BaseController
         }
 
         $kpiList = $this->kpiPegawaiModel->getByPegawai($pegawaiId);
-        
+
         if (empty($kpiList)) return redirect()->to(base_url('penilaian'))->with('error', "KPI untuk {$pegawai['nama']} belum di-setup.");
+
+        // Penginputan penilaian hanya boleh dilakukan jika total bobot KPI
+        // pegawai sudah tepat 100% — bobot yang belum lengkap akan membuat
+        // Nilai Akhir/Yudisium hasil perhitungan menjadi keliru (skalanya
+        // tidak lagi 1.00-4.00 penuh), jadi diblokir sejak awal di sini,
+        // bukan dibiarkan tersimpan lalu ketahuan salah belakangan.
+        $totalBobot = $this->kpiPegawaiModel->getTotalBobot($pegawaiId);
+        if (round($totalBobot, 2) != 1.00) {
+            return redirect()->to(base_url('penilaian'))
+                             ->with('error',
+                                 "KPI atas nama {$pegawai['nama']} belum mencapai 100% "
+                                 . "(saat ini " . round($totalBobot * 100, 2) . "%), "
+                                 . "harap selesaikan setup KPI untuk pegawai tersebut.");
+        }
 
         $existing   = $this->penilaianModel->getIndexedByKpi($pegawaiId, $periodeAktif['id']);
         $nilaiAkhir = $this->penilaianModel->getNilaiAkhir($pegawaiId, $periodeAktif['id']);
@@ -162,11 +192,28 @@ class PenilaianController extends BaseController
 
     public function store(int $pegawaiId)
     {
+        $check = $this->checkMenuAccess('penilaian');
+        if ($check !== true) return $check;
+
         if (!$this->canAccessPegawai($pegawaiId)) return $this->forbidden();
 
         $periodeAktif = $this->periodeModel->getAktif();
         if (!$periodeAktif) {
             return redirect()->to(base_url('penilaian'))->with('error', 'Tidak ada periode aktif.');
+        }
+
+        // Pertahanan tambahan (selain di form()): tolak penyimpanan jika
+        // bobot KPI pegawai belum tepat 100%, seandainya store() dipanggil
+        // langsung tanpa melalui form() (mis. bobot berubah setelah form
+        // dibuka, atau permintaan POST manual).
+        $totalBobot = $this->kpiPegawaiModel->getTotalBobot($pegawaiId);
+        if (round($totalBobot, 2) != 1.00) {
+            $pegawaiNama = $this->pegawaiModel->find($pegawaiId)['nama'] ?? 'pegawai ini';
+            return redirect()->to(base_url('penilaian'))
+                             ->with('error',
+                                 "KPI atas nama {$pegawaiNama} belum mencapai 100% "
+                                 . "(saat ini " . round($totalBobot * 100, 2) . "%), "
+                                 . "harap selesaikan setup KPI untuk pegawai tersebut.");
         }
 
         $role = session()->get('role');
@@ -193,11 +240,13 @@ class PenilaianController extends BaseController
                             ->with('error', 'Penilaian tidak dapat diedit pada status saat ini.');
         }
 
-        $kpiList          = $this->kpiPegawaiModel->getByPegawai($pegawaiId);
-        $realisasi        = $this->request->getPost('realisasi')         ?? [];
-        $catatan          = $this->request->getPost('catatan')           ?? [];
-        $realisasiTurunan = $this->request->getPost('realisasi_turunan') ?? [];
-        $catatanTurunan   = $this->request->getPost('catatan_turunan')   ?? [];
+        $kpiList                = $this->kpiPegawaiModel->getByPegawai($pegawaiId);
+        $realisasi              = $this->request->getPost('realisasi')                ?? [];
+        $realisasiHarian        = $this->request->getPost('realisasi_harian')          ?? [];
+        $catatan                = $this->request->getPost('catatan')                   ?? [];
+        $realisasiTurunan       = $this->request->getPost('realisasi_turunan')         ?? [];
+        $realisasiTurunanHarian = $this->request->getPost('realisasi_turunan_harian')  ?? [];
+        $catatanTurunan         = $this->request->getPost('catatan_turunan')           ?? [];
 
         $saved = 0;
         foreach ($kpiList as $kpi) {
@@ -213,7 +262,8 @@ class PenilaianController extends BaseController
                 // masing-masing (yang bisa berbeda antar Turunan), lalu
                 // Skor Induk = rata-rata tertimbang menggunakan Cara B:
                 //   Skor_Induk = Σ(Skor_T × Bobot_T) / Bobot_Induk
-                $turunanInput   = $realisasiTurunan[$kpiPegawaiId] ?? [];
+                $turunanInput       = $realisasiTurunan[$kpiPegawaiId]       ?? [];
+                $turunanInputHarian = $realisasiTurunanHarian[$kpiPegawaiId] ?? [];
                 $sumKontribusiT = 0.0;
                 $skorPerTurunan = [];
 
@@ -223,6 +273,9 @@ class PenilaianController extends BaseController
                 // akan menghasilkan nilai yang menyesatkan. Realisasi = 0 yang
                 // SENGAJA diisi (bukan dikosongkan) dianggap terisi — untuk KPI
                 // ber-polaritas 'min', 0 adalah capaian valid (bahkan terbaik).
+                // Untuk polarity 'tertimbang', KEDUA indikator (Posisi Akhir &
+                // Rata-rata Harian) harus terisi — salah satu kosong dianggap
+                // belum lengkap juga.
                 $turunanTidakLengkap = false;
                 foreach ($listTurunan as $t) {
                     $rt = $turunanInput[$t['id']] ?? null;
@@ -230,49 +283,73 @@ class PenilaianController extends BaseController
                         $turunanTidakLengkap = true;
                         break;
                     }
+                    if (($t['polarity'] ?? 'max') === 'tertimbang') {
+                        $rtHarian = $turunanInputHarian[$t['id']] ?? null;
+                        if ($rtHarian === null || $rtHarian === '') {
+                            $turunanTidakLengkap = true;
+                            break;
+                        }
+                    }
                 }
 
                 if ($turunanTidakLengkap) continue;
 
                 foreach ($listTurunan as $t) {
                     $rtFloat      = (float)($turunanInput[$t['id']]);
-                    $targetT      = (float)($t['target'] ?? 100);
-                    $polarityT    = $t['polarity'] ?? 'max';
+                    $rtHarianFloat = isset($turunanInputHarian[$t['id']]) ? (float)$turunanInputHarian[$t['id']] : null;
                     $bobotT       = (float)($t['bobot'] ?? 0);
 
-                    // is_capped selalu true sesuai keputusan desain
-                    $skorT        = $this->calculator->hitungSkorCapaian($rtFloat, $targetT, $polarityT, true);
+                    $skorT        = $this->calculator->hitungSkor($t, [
+                        'realisasi'        => $rtFloat,
+                        'realisasi_harian' => $rtHarianFloat,
+                    ]);
                     $kontribusiT  = $bobotT > 0 ? $skorT * $bobotT : 0;
 
                     $sumKontribusiT += $kontribusiT;
                     $skorPerTurunan[$t['id']] = [
                         'realisasi'        => $rtFloat,
+                        'realisasi_harian' => $rtHarianFloat,
                         'skor'             => round($skorT, 2),
                         'nilai_kontribusi' => round($kontribusiT, 4),
                     ];
                 }
 
                 // Skor Induk = Σ(Skor_T × Bobot_T) / Bobot_Induk (Cara B)
+                // Hanya di-cap ke atas (maks 4, batas tertinggi yang mungkin
+                // dari polarity mana pun). TIDAK di-floor ke 1 — Turunan
+                // ber-polarity 'tertimbang' bisa menghasilkan Skor_T serendah
+                // 0,85 (Skor Indikator 1 x Pengkali 0,85), jadi rata-rata
+                // tertimbangnya pun sah bernilai di bawah 1. Meng-floor ke 1
+                // akan diam-diam menaikkan Skor Induk yang sebenarnya rendah.
                 $bobotInduk = (float)$kpi['bobot'];
                 $skorInduk  = $bobotInduk > 0 ? $sumKontribusiT / $bobotInduk : 0;
-                $skorInduk  = max(10, min(100, $skorInduk));
+                $skorInduk  = min(4, $skorInduk);
 
                 $real       = null; // tidak relevan untuk kasus Turunan
+                $realHarian = null; // tidak relevan untuk kasus Turunan
                 $skor       = $skorInduk;
                 $kontribusi = $this->calculator->hitungKontribusi($skor, $bobotInduk);
 
             } else {
-                // ── KPI tanpa Parameter Turunan: alur asli, tidak diubah ──
+                // ── KPI tanpa Parameter Turunan ──
                 // Hanya lewati KPI yang benar-benar belum diisi (kosong).
                 // Realisasi = 0 yang sengaja diisi tetap disimpan & dihitung —
                 // untuk KPI ber-polaritas 'min', 0 adalah capaian valid.
-                $real = $realisasi[$kpiId] ?? null;
-                if ($real === null || $real === '') continue;
-                $real       = (float)$real;
-                $target     = (float)($kpi['target'] ?? 100);
+                // Untuk polarity 'tertimbang', KEDUA indikator harus terisi
+                // (all-or-nothing) — salah satu kosong dianggap belum diisi.
                 $polarity   = $kpi['polarity'] ?? 'max';
-                $isCapped   = (bool)($kpi['is_capped'] ?? true);
-                $skor       = $this->calculator->hitungSkorCapaian($real, $target, $polarity, $isCapped);
+                $real       = $realisasi[$kpiId] ?? null;
+                $realHarianRaw = $realisasiHarian[$kpiId] ?? null;
+
+                if ($real === null || $real === '') continue;
+                if ($polarity === 'tertimbang' && ($realHarianRaw === null || $realHarianRaw === '')) continue;
+
+                $real       = (float)$real;
+                $realHarian = $realHarianRaw !== null ? (float)$realHarianRaw : null;
+                $skor       = $this->calculator->hitungSkor($kpi, [
+                    'realisasi'        => $real,
+                    'realisasi_harian' => $realHarian,
+                ]);
                 $kontribusi = $this->calculator->hitungKontribusi($skor, (float)$kpi['bobot']);
             }
 
@@ -285,6 +362,7 @@ class PenilaianController extends BaseController
 
             $newData = [
                 'realisasi'        => $punyaTurunan ? null : $real,
+                'realisasi_harian' => $punyaTurunan ? null : $realHarian,
                 'skor'             => round($skor, 2),
                 'nilai_kontribusi' => round($kontribusi, 2),
                 'catatan'          => $punyaTurunan ? null : ($catatan[$kpiId] ?? null),
@@ -307,14 +385,22 @@ class PenilaianController extends BaseController
             // 4. Simpan skor & kontribusi per Turunan
             if ($punyaTurunan && $recordId) {
                 foreach ($listTurunan as $t) {
+                    // Hanya field yang benar-benar belum diisi yang dilewati.
+                    // Realisasi = 0 yang sengaja diisi TETAP disimpan — sama
+                    // seperti aturan di atas (min-polarity 0 = capaian valid;
+                    // special-polarity "Tidak Ada" juga sah-sah saja bernilai
+                    // 0). Sebelumnya baris ini keliru melewati SEMUA realisasi
+                    // bernilai 0, membuat detail per-Turunan hilang senyap
+                    // walau Skor Induk agregatnya sudah benar dihitung di atas.
                     $rt = ($realisasiTurunan[$kpiPegawaiId] ?? [])[$t['id']] ?? null;
-                    if ($rt === null || $rt === '' || (float)$rt == 0.0) continue;
+                    if ($rt === null || $rt === '') continue;
 
                     $skorData = $skorPerTurunan[$t['id']] ?? null;
                     if (!$skorData) continue;
 
                     $this->penilaianTurunanModel->upsert($recordId, (int)$t['id'], [
                         'realisasi'        => $skorData['realisasi'],
+                        'realisasi_harian' => $skorData['realisasi_harian'],
                         'skor'             => $skorData['skor'],
                         'nilai_kontribusi' => $skorData['nilai_kontribusi'],
                         'catatan'          => ($catatanTurunan[$kpiPegawaiId] ?? [])[$t['id']] ?? null,
@@ -323,9 +409,19 @@ class PenilaianController extends BaseController
             }
 
             if ($recordId) {
-                $keterangan = $punyaTurunan
-                    ? 'Input Realisasi per Turunan, Skor Induk = rata-rata tertimbang (' . round($skor, 2) . ')'
-                    : ($oldData ? "Update Realisasi menjadi $real" : "Input Realisasi awal $real");
+                if ($punyaTurunan) {
+                    $keterangan = 'Input Realisasi per Turunan, Skor Induk = rata-rata tertimbang (' . round($skor, 2) . ')';
+                } else {
+                    // Representasi realisasi yang mudah dibaca di log audit —
+                    // 'special' bersifat biner (bukan angka mentah 0/1), dan
+                    // 'tertimbang' punya dua indikator sekaligus.
+                    $realDisplay = match ($polarity) {
+                        'special'    => ((float)$real == 1.0) ? 'Ada' : 'Tidak Ada',
+                        'tertimbang' => "{$real} (Harian: {$realHarian}%)",
+                        default      => $real,
+                    };
+                    $keterangan = $oldData ? "Update Realisasi menjadi $realDisplay" : "Input Realisasi awal $realDisplay";
+                }
 
                 $this->auditService->log(
                     'penilaian', $recordId, $action,
@@ -344,6 +440,9 @@ class PenilaianController extends BaseController
 
     public function submit(int $pegawaiId)
     {
+        $check = $this->checkMenuAccess('penilaian');
+        if ($check !== true) return $check;
+
         if (!$this->canAccessPegawai($pegawaiId)) return $this->forbidden();
 
         $periode = $this->periodeModel->getAktif();
@@ -434,9 +533,10 @@ class PenilaianController extends BaseController
 
     public function ajaxHitung()
     {
-        $pegawaiId = (int)$this->request->getPost('pegawai_id');
-        $kpiId     = (int)$this->request->getPost('kpi_id');
-        $realisasi = $this->request->getPost('realisasi');
+        $pegawaiId      = (int)$this->request->getPost('pegawai_id');
+        $kpiId          = (int)$this->request->getPost('kpi_id');
+        $realisasi      = $this->request->getPost('realisasi');
+        $realisasiHarianRaw = $this->request->getPost('realisasi_harian');
 
         if (!$this->canAccessPegawai($pegawaiId)) {
             return $this->response->setJSON(['valid' => false, 'message' => 'Tidak memiliki akses.']);
@@ -459,23 +559,50 @@ class PenilaianController extends BaseController
             return $this->response->setJSON(['valid' => false, 'message' => 'KPI tidak ditemukan']);
         }
 
+        $polarity = $currentKpi['polarity'] ?? 'max';
+
         // Field belum diisi sama sekali -> jangan tampilkan preview skor
         // (berbeda dari realisasi = 0 yang sengaja diisi, yang tetap valid
-        // untuk KPI ber-polaritas 'min').
+        // untuk KPI ber-polaritas 'min'/'special' Tidak Ada). Untuk
+        // 'tertimbang', KEDUA indikator harus terisi sebelum preview tampil.
         if ($realisasi === null || $realisasi === '') {
             return $this->response->setJSON(['valid' => false, 'message' => 'Realisasi belum diisi.']);
         }
+        if ($polarity === 'tertimbang' && ($realisasiHarianRaw === null || $realisasiHarianRaw === '')) {
+            return $this->response->setJSON(['valid' => false, 'message' => 'Realisasi Rata-rata Harian belum diisi.']);
+        }
 
         // 3. Konversi tipe data untuk dikalkulasi
-        $realisasi = (float)$realisasi;
+        $realisasi      = (float)$realisasi;
+        $realisasiHarian = $realisasiHarianRaw !== null && $realisasiHarianRaw !== '' ? (float)$realisasiHarianRaw : null;
         $target    = (float)($currentKpi['target'] ?? 100);
         $bobot     = (float)($currentKpi['bobot'] ?? 0);
-        $polarity  = $currentKpi['polarity'] ?? 'max';
-        $isCapped  = isset($currentKpi['is_capped']) ? (bool)$currentKpi['is_capped'] : true;
 
-        // 4. Lakukan perhitungan menggunakan Service
-        $skor       = $this->calculator->hitungSkorCapaian($realisasi, $target, $polarity, $isCapped);
+        // 4. Lakukan perhitungan menggunakan Service (dispatcher tunggal
+        //    berdasarkan polarity, mencakup max/min/precise/special/tertimbang)
+        $skor       = $this->calculator->hitungSkor($currentKpi, [
+            'realisasi'        => $realisasi,
+            'realisasi_harian' => $realisasiHarian,
+        ]);
         $kontribusi = $this->calculator->hitungKontribusi($skor, $bobot);
+
+        // Pencapaian mentah (Realisasi/Target atau Target/Realisasi) untuk
+        // kolom "Pencapaian" — hanya bermakna untuk polarity max/min/precise
+        // (rasio tunggal). 'special' bersifat biner (Ada/Tidak Ada, tidak
+        // ada rasio) dan 'tertimbang' punya DUA rasio terpisah, jadi kolom
+        // "Pencapaian" untuk keduanya ditampilkan null di sini — front-end
+        // menampilkan representasi lain (badge Ada/Tidak Ada, atau rincian
+        // Skor Dasar x Pengkali) alih-alih persentase tunggal.
+        // is_infinite() WAJIB diperiksa sebelum masuk JSON: json_encode()
+        // gagal/rusak jika diberi nilai INF mentah (kasus realisasi=0 pada
+        // KPI 'min' — capaian tak terhingga secara matematis).
+        $pencapaianInf    = false;
+        $pencapaianPersen = null;
+        if (in_array($polarity, ['max', 'min', 'precise'], true) && $target > 0) {
+            $pencapaianRaw    = $this->calculator->hitungPencapaianPersen($realisasi, $target, $polarity === 'precise' ? 'max' : $polarity);
+            $pencapaianInf    = is_infinite($pencapaianRaw);
+            $pencapaianPersen = $pencapaianInf ? null : round($pencapaianRaw, 2);
+        }
 
         // 5. Tentukan warna badge (memakai service yang sama dengan tampilan lain,
         //    agar tidak ada duplikasi logika ambang batas warna)
@@ -483,9 +610,12 @@ class PenilaianController extends BaseController
 
         // 6. Kembalikan response JSON beserta token CSRF baru
         return $this->response->setJSON([
-            'valid'      => true,
-            'skor'       => round($skor, 2),
-            'kontribusi' => round($kontribusi, 2),
+            'valid'              => true,
+            'skor'               => round($skor, 2),
+            'nilai'              => round($skor, 2), // Nilai = Skor (identik, sesuai skema kriteria pencapaian)
+            'kontribusi'         => round($kontribusi, 2),
+            'pencapaian'         => $pencapaianPersen,
+            'pencapaian_tak_terhingga' => $pencapaianInf,
             'color'      => $bootstrapColor,
             'csrf_hash'  => csrf_hash()
         ]);
@@ -543,9 +673,10 @@ class PenilaianController extends BaseController
     // target sendiri yang independen dari KPI Induk.
     public function ajaxHitungTurunan()
     {
-        $turunanId = (int)$this->request->getPost('turunan_id');
-        $pegawaiId = (int)$this->request->getPost('pegawai_id');
-        $realisasi = $this->request->getPost('realisasi');
+        $turunanId          = (int)$this->request->getPost('turunan_id');
+        $pegawaiId          = (int)$this->request->getPost('pegawai_id');
+        $realisasi          = $this->request->getPost('realisasi');
+        $realisasiHarianRaw = $this->request->getPost('realisasi_harian');
 
         if (!$this->canAccessPegawai($pegawaiId)) {
             return $this->response->setJSON(['valid' => false, 'csrf_hash' => csrf_hash()]);
@@ -562,27 +693,52 @@ class PenilaianController extends BaseController
             return $this->response->setJSON(['valid' => false, 'csrf_hash' => csrf_hash()]);
         }
 
+        $polarity = $turunan['polarity'] ?? 'max';
+
         // Field belum diisi sama sekali -> jangan tampilkan preview skor
         // (berbeda dari realisasi = 0 yang sengaja diisi, yang tetap valid
-        // untuk Turunan ber-polaritas 'min').
+        // untuk Turunan ber-polaritas 'min'/'special' Tidak Ada). Untuk
+        // 'tertimbang', KEDUA indikator harus terisi.
         if ($realisasi === null || $realisasi === '') {
             return $this->response->setJSON(['valid' => false, 'csrf_hash' => csrf_hash()]);
         }
-        $realisasi = (float)$realisasi;
+        if ($polarity === 'tertimbang' && ($realisasiHarianRaw === null || $realisasiHarianRaw === '')) {
+            return $this->response->setJSON(['valid' => false, 'csrf_hash' => csrf_hash()]);
+        }
+        $realisasi       = (float)$realisasi;
+        $realisasiHarian = $realisasiHarianRaw !== null && $realisasiHarianRaw !== '' ? (float)$realisasiHarianRaw : null;
 
-        $target   = (float)($turunan['target']  ?? 100);
-        $polarity = $turunan['polarity']          ?? 'max';
-        $bobot    = (float)($turunan['bobot']    ?? 0);
+        $target = (float)($turunan['target'] ?? 100);
+        $bobot  = (float)($turunan['bobot']  ?? 0);
 
-        // is_capped selalu true sesuai keputusan desain
-        $skor        = $this->calculator->hitungSkorCapaian($realisasi, $target, $polarity, true);
+        // Dispatcher tunggal berdasarkan polarity (sama seperti ajaxHitung()
+        // & store()) — is_capped selalu true untuk Turunan sesuai keputusan
+        // desain, sudah tercakup di dalam hitungSkorCapaian() untuk max/min.
+        $skor        = $this->calculator->hitungSkor($turunan, [
+            'realisasi'        => $realisasi,
+            'realisasi_harian' => $realisasiHarian,
+        ]);
         $kontribusiT = $bobot > 0 ? $skor * $bobot : 0;
         $color       = $this->calculator->getColorBySkor($skor);
+
+        // Sama seperti ajaxHitung(): pencapaian tunggal hanya bermakna untuk
+        // max/min/precise; is_infinite() WAJIB diperiksa sebelum masuk JSON
+        // (realisasi=0 pada Turunan 'min' = capaian tak terhingga).
+        $pencapaianInf    = false;
+        $pencapaianPersen = null;
+        if (in_array($polarity, ['max', 'min', 'precise'], true) && $target > 0) {
+            $pencapaianRaw    = $this->calculator->hitungPencapaianPersen($realisasi, $target, $polarity === 'precise' ? 'max' : $polarity);
+            $pencapaianInf    = is_infinite($pencapaianRaw);
+            $pencapaianPersen = $pencapaianInf ? null : round($pencapaianRaw, 2);
+        }
 
         return $this->response->setJSON([
             'valid'        => true,
             'skor'         => round($skor, 2),
+            'nilai'        => round($skor, 2), // Nilai = Skor (identik)
             'kontribusi_t' => round($kontribusiT, 4),
+            'pencapaian'   => $pencapaianPersen,
+            'pencapaian_tak_terhingga' => $pencapaianInf,
             'bobot'        => $bobot,
             'color'        => $color,
             'csrf_hash'    => csrf_hash(),
