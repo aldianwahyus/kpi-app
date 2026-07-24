@@ -278,6 +278,39 @@ final class KpiCalculationServiceTest extends CIUnitTestCase
         $this->assertSame(1.0, $this->calculator->hitungSkorPrecise(100, 0, 2.5, 7.5, 12.5));
     }
 
+    // ── Regresi: 5 Contoh Perhitungan persis dari spesifikasi "Precise is
+    // Better" (toleransi default 2,5%/7,5%/12,5% sesuai form Admin) ──
+
+    public function testSkorPreciseContoh1TargetSeratusRealisasiSeratus(): void
+    {
+        // Target=100, Realisasi=100 -> Persentase 100% -> Skor 4
+        $this->assertSame(4.0, $this->calculator->hitungSkorPrecise(100, 100, 2.5, 7.5, 12.5));
+    }
+
+    public function testSkorPreciseContoh2RealisasiSembilanPuluhDelapan(): void
+    {
+        // Target=100, Realisasi=98 -> Persentase 98% -> Skor 4
+        $this->assertSame(4.0, $this->calculator->hitungSkorPrecise(98, 100, 2.5, 7.5, 12.5));
+    }
+
+    public function testSkorPreciseContoh3RealisasiSeratusEmpat(): void
+    {
+        // Target=100, Realisasi=104 -> Persentase 104% -> Skor 3
+        $this->assertSame(3.0, $this->calculator->hitungSkorPrecise(104, 100, 2.5, 7.5, 12.5));
+    }
+
+    public function testSkorPreciseContoh4RealisasiSembilanPuluh(): void
+    {
+        // Target=100, Realisasi=90 -> Persentase 90% -> Skor 2
+        $this->assertSame(2.0, $this->calculator->hitungSkorPrecise(90, 100, 2.5, 7.5, 12.5));
+    }
+
+    public function testSkorPreciseContoh5RealisasiSeratusLimaBelas(): void
+    {
+        // Target=100, Realisasi=115 -> Persentase 115% -> Skor 1
+        $this->assertSame(1.0, $this->calculator->hitungSkorPrecise(115, 100, 2.5, 7.5, 12.5));
+    }
+
     // ── hitungSkorSpecial() — polarity 'Special Scoring' ──
 
     public function testSkorSpecialMaximizeAdaSkorEmpat(): void

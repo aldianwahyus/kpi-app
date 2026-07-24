@@ -122,9 +122,15 @@ foreach ($pegawai as $p) {
           <td class="text-center">
             <?php $jumlahSetup = $kpiSetupCount[$p['id']] ?? 0; ?>
             <?php $bobotTotal  = $kpiBobotTotal[$p['id']] ?? 0; ?>
-            <?php if ($jumlahSetup > 0 && round($bobotTotal, 2) == 1.00): ?>
+            <?php $targetBelum = $kpiTargetBelum[$p['id']] ?? true; ?>
+            <?php if ($jumlahSetup > 0 && round($bobotTotal, 2) == 1.00 && !$targetBelum): ?>
               <span class="badge" style="background:#C6EFCE;color:#375623;font-size:11px">
                 ✓ <?= $jumlahSetup ?> KPI
+              </span>
+            <?php elseif ($jumlahSetup > 0 && round($bobotTotal, 2) == 1.00 && $targetBelum): ?>
+              <span class="badge" style="background:#FFF3CD;color:#7F6000;font-size:11px"
+                    title="Target untuk Periode Aktif belum lengkap di Master Target">
+                Target belum di-setup
               </span>
             <?php elseif ($jumlahSetup > 0): ?>
               <span class="badge" style="background:#FCE4D6;color:#C00000;font-size:11px"

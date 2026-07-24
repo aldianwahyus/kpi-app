@@ -6,14 +6,16 @@ use App\Models\KpiPegawaiTurunanModel;
 use App\Models\KpiDivisiModel;
 use App\Models\PegawaiModel;
 use App\Models\DivisiModel;
+use App\Models\PeriodeModel;
 
 class KpiPegawaiController extends BaseController
 {
-    protected KpiPegawaiModel         $kpiPegawaiModel;
-    protected KpiPegawaiTurunanModel  $kpiPegawaiTurunanModel;
-    protected KpiDivisiModel          $kpiDivisiModel;
-    protected PegawaiModel            $pegawaiModel;
-    protected DivisiModel             $divisiModel;
+    protected KpiPegawaiModel               $kpiPegawaiModel;
+    protected KpiPegawaiTurunanModel        $kpiPegawaiTurunanModel;
+    protected KpiDivisiModel                $kpiDivisiModel;
+    protected PegawaiModel                  $pegawaiModel;
+    protected DivisiModel                   $divisiModel;
+    protected PeriodeModel                  $periodeModel;
 
     public function __construct()
     {
@@ -22,6 +24,7 @@ class KpiPegawaiController extends BaseController
         $this->kpiDivisiModel         = new KpiDivisiModel();
         $this->pegawaiModel           = new PegawaiModel();
         $this->divisiModel            = new DivisiModel();
+        $this->periodeModel           = new PeriodeModel();
     }
 
     /**
@@ -95,10 +98,12 @@ class KpiPegawaiController extends BaseController
 
         $divisi      = $this->divisiModel->getActive();
 
-        // Hitung status KPI per pegawai
+        // Hitung status KPI per pegawai — Bobot & Target TIDAK LAGI dikelola
+        // di sini (lihat menu "Master Target"), jadi status di layar ini
+        // hanya mencakup jumlah KPI yang sudah di-assign & kesiapan KPI
+        // Unit Kerja divisinya.
         $status = [];
         foreach ($pegawaiList as $p) {
-            $totalBobot   = $this->kpiPegawaiModel->getTotalBobot($p['id']);
             $jumlahKpi    = count($this->kpiPegawaiModel->getByPegawai($p['id']));
 
             // Cek apakah KPI Unit Kerja sudah 100%
@@ -108,8 +113,6 @@ class KpiPegawaiController extends BaseController
 
             $status[$p['id']] = [
                 'jumlah_kpi'    => $jumlahKpi,
-                'total_bobot'   => $totalBobot,
-                'bobot_ok'      => round($totalBobot * 100, 2) == 100,
                 'divisi_ok'     => round($bobotDivisi * 100, 2) == 100,
             ];
         }
@@ -160,7 +163,6 @@ class KpiPegawaiController extends BaseController
         // KPI yang sudah di-assign ke pegawai ini
         $assigned    = $this->kpiPegawaiModel->getByPegawai($pegawaiId);
         $assignedIds = $this->kpiPegawaiModel->getAssignedKpiIds($pegawaiId);
-        $totalBobot  = $this->kpiPegawaiModel->getTotalBobot($pegawaiId);
 
         // Ambil seluruh Parameter Turunan untuk setiap KPI Induk yang
         // sudah di-assign, dikelompokkan berdasarkan id baris kpi_pegawai
@@ -169,6 +171,27 @@ class KpiPegawaiController extends BaseController
         $turunanByInduk = [];
         foreach ($assigned as $a) {
             $turunanByInduk[$a['id']] = $this->kpiPegawaiTurunanModel->getByKpiPegawai($a['id']);
+        }
+
+        // Jika ada Periode Aktif, tampilkan preview Bobot Penilaian & Target
+        // (read-only) yang diambil dari Master Target — Bobot/Target TIDAK
+        // LAGI diisi/diedit di layar ini sama sekali (lihat menu terpisah
+        // "Master Target").
+        $periodeAktif      = $this->periodeModel->getAktif();
+        $previewIndukById  = [];
+        $previewTurunanById= [];
+        if ($periodeAktif) {
+            foreach ($this->kpiPegawaiModel->getByPegawaiUntukPeriode($pegawaiId, $periodeAktif) as $row) {
+                $previewIndukById[$row['id']] = $row;
+            }
+            foreach ($turunanByInduk as $kpId => $listT) {
+                if (empty($listT)) {
+                    continue;
+                }
+                foreach ($this->kpiPegawaiTurunanModel->getByKpiPegawaiUntukPeriode($kpId, $periodeAktif) as $row) {
+                    $previewTurunanById[$row['id']] = $row;
+                }
+            }
         }
 
         // Pool KPI dari KPI Unit Kerja divisi pegawai
@@ -208,8 +231,10 @@ class KpiPegawaiController extends BaseController
                 'assignedGrouped'=> $assignedGrouped,
                 'turunanByInduk' => $turunanByInduk,
                 'poolGrouped'    => $poolGrouped,
-                'totalBobot'     => $totalBobot,
                 'grouped'        => $grouped,
+                'periodeAktif'      => $periodeAktif,
+                'previewIndukById'  => $previewIndukById,
+                'previewTurunanById'=> $previewTurunanById,
             ]),
         ]);
     }
@@ -258,79 +283,28 @@ class KpiPegawaiController extends BaseController
                          ->with('success', 'KPI berhasil ditambahkan.');
     }
 
-    // ── Simpan bobot & target (batch update) ──────────────────
-    public function saveBobot(int $pegawaiId)
+    // ── Simpan Deskripsi Target (batch update) ────────────────
+    // Bobot & Target TIDAK LAGI dikelola di layar ini sama sekali — lihat
+    // menu terpisah "Master Target". Endpoint ini hanya menyimpan teks
+    // panduan pengisian Realisasi ("Deskripsi Target") per KPI.
+    public function saveDeskripsi(int $pegawaiId)
     {
         $check = $this->checkMenuAccess('kpi_pegawai');
         if ($check !== true) return $check;
 
         if (!$this->canAccessPegawai($pegawaiId)) return $this->forbidden();
 
-        $bobots           = $this->request->getPost('bobot')            ?? [];
-        $targets          = $this->request->getPost('target')           ?? [];
         $ids              = $this->request->getPost('kp_id')            ?? [];
         $deskripsiTargets = $this->request->getPost('deskripsi_target') ?? [];
 
-        // Tolak secara eksplisit apabila ada nilai bobot di luar rentang 0-1,
-        // alih-alih menebak maksud pengguna (format desimal sudah ditegaskan
-        // pada elemen input di _form.php: min="0" max="1").
-        foreach ($bobots as $b) {
-            if ((float)$b < 0 || (float)$b > 1) {
-                return redirect()->back()
-                                 ->with('error',
-                                     'Nilai bobot harus berupa desimal antara 0 dan 1 '
-                                     . '(misalnya 0.10 untuk 10%). Periksa kembali input Anda.');
-            }
-        }
-
-        // Validasi total bobot = 100%
-        $total = array_sum($bobots);
-
-        if (round($total, 2) != 1.00) {
-            return redirect()->back()
-                             ->with('error',
-                                 'Total bobot harus = 100%. '
-                                 . 'Saat ini: ' . round($total * 100, 2) . '%');
-        }
-
         foreach ($ids as $i => $kpId) {
-            $kpId = (int)$kpId;
-            $bobotBaru  = (float)($bobots[$i] ?? 0);
-            $targetBaru = (float)($targets[$i] ?? 100.00);
-
-            // Jika Parameter Induk ini sudah memiliki Parameter Turunan,
-            // Bobot Induk maupun Target Induk tidak dapat diubah begitu
-            // saja — karena Bobot dan Target Turunan yang sudah ada
-            // merupakan hasil pembagian dari pagu Bobot/Target Induk
-            // sebelumnya. Mengubah pagu tanpa menyesuaikan Turunannya
-            // akan membuat SUM Turunan tidak lagi sama dengan pagu yang baru.
-            if ($this->kpiPegawaiTurunanModel->hasTurunan($kpId)) {
-                $totalBobotTurunan = $this->kpiPegawaiTurunanModel->getTotalBobot($kpId);
-
-                if (round($totalBobotTurunan, 4) != round($bobotBaru, 4)) {
-                    return redirect()->back()
-                                     ->with('error',
-                                         'Bobot Parameter Induk yang sudah memiliki Parameter Turunan '
-                                         . 'tidak dapat diubah secara langsung, karena akan membuat '
-                                         . 'total bobot Turunannya (' . round($totalBobotTurunan * 100, 2) . '%) '
-                                         . 'tidak lagi sesuai. Hapus atau sesuaikan Parameter Turunan '
-                                         . 'terlebih dahulu sebelum mengubah Bobot Induk.');
-                }
-                // Catatan: validasi SUM Target Turunan = Target Induk
-                // DIHAPUS karena setiap Turunan kini punya target dan
-                // satuan yang independen — Target Induk bersifat informatif
-                // saja dan tidak dipakai dalam kalkulasi skor.
-            }
-
-            $this->kpiPegawaiModel->update($kpId, [
-                'bobot'            => $bobotBaru,
-                'target'           => $targetBaru,
+            $this->kpiPegawaiModel->update((int)$kpId, [
                 'deskripsi_target' => $deskripsiTargets[$i] ?? null,
             ]);
         }
 
         return redirect()->to(base_url("kpi-pegawai/edit/$pegawaiId"))
-                         ->with('success', 'Konfigurasi bobot dan target KPI berhasil disimpan.');
+                         ->with('success', 'Deskripsi Target berhasil disimpan.');
     }
 
     // ── Hapus KPI dari Pegawai ───────────────────────────────
@@ -370,14 +344,7 @@ class KpiPegawaiController extends BaseController
 
         if (!$this->canAccessPegawai($induk['pegawai_id'])) return $this->forbidden();
 
-        if ((float)$induk['bobot'] <= 0) {
-            return redirect()->to(base_url("kpi-pegawai/edit/{$induk['pegawai_id']}"))
-                             ->with('error', 'Isi dan simpan Bobot KPI Induk terlebih dahulu sebelum menambah Parameter Turunan.');
-        }
-
         $nama              = trim($this->request->getPost('nama_turunan')      ?? '');
-        $bobot             = (float)$this->request->getPost('bobot');
-        $target            = (float)$this->request->getPost('target');
         $deskripsiTarget   = trim($this->request->getPost('deskripsi_target')  ?? '') ?: null;
         $polarity          = $this->request->getPost('polarity')           ?? 'max';
         $perubahanPolarityRaw = $this->request->getPost('perubahan_polarity')  ?? 'pos';
@@ -391,47 +358,18 @@ class KpiPegawaiController extends BaseController
                              ->with('error', 'Nama Parameter Turunan wajib diisi.');
         }
 
-        if ($bobot <= 0) {
-            return redirect()->to(base_url("kpi-pegawai/edit/{$induk['pegawai_id']}"))
-                             ->with('error', 'Bobot Parameter Turunan harus lebih besar dari 0.');
-        }
-
-        // Target tidak bermakna untuk polarity 'special' (penilaian Ada/Tidak
-        // Ada, tidak dibandingkan ke target) — jadi tidak diwajibkan > 0
-        // khusus untuk polarity ini.
-        if ($target <= 0 && $polarity !== 'special') {
-            return redirect()->to(base_url("kpi-pegawai/edit/{$induk['pegawai_id']}"))
-                             ->with('error', 'Target Parameter Turunan harus lebih besar dari 0.');
-        }
+        // Bobot & Target TIDAK diisi/divalidasi di sini — Bobot & Target
+        // Parameter Turunan sepenuhnya dikelola di menu "Master Target"
+        // (per tahun/per bulan), bukan saat Parameter Turunan dibuat.
 
         if ($errPolarity = $this->validateTurunanPolarityData($polarity)) {
             return redirect()->to(base_url("kpi-pegawai/edit/{$induk['pegawai_id']}"))
                              ->with('error', $errPolarity);
         }
 
-        // Validasi tegas: SUM Bobot Turunan (termasuk yang baru ditambahkan
-        // ini) tidak boleh melebihi Bobot Induk. Tidak ada toleransi
-        // pembulatan — selisih sekecil apa pun akan ditolak.
-        $totalBobotTurunanSaatIni = $this->kpiPegawaiTurunanModel->getTotalBobot($kpiPegawaiId);
-        $totalSetelahDitambah     = round($totalBobotTurunanSaatIni + $bobot, 4);
-        $bobotInduk               = round((float)$induk['bobot'], 4);
-
-        if ($totalSetelahDitambah > $bobotInduk) {
-            $sisaBobot = round($bobotInduk - $totalBobotTurunanSaatIni, 4);
-            return redirect()->to(base_url("kpi-pegawai/edit/{$induk['pegawai_id']}"))
-                             ->with('error',
-                                 'Total Bobot Parameter Turunan melebihi Bobot Parameter Induk. '
-                                 . 'Sisa bobot yang tersedia: ' . round($sisaBobot * 100, 2) . '%.');
-        }
-
-        // Validasi target dihapus — setiap Turunan kini punya Target
-        // independen dari Target Induk (beda satuan, beda makna).
-
         $this->kpiPegawaiTurunanModel->insert(array_merge([
             'kpi_pegawai_id'   => $kpiPegawaiId,
             'nama_turunan'     => $nama,
-            'bobot'            => $bobot,
-            'target'           => $target,
             'deskripsi_target' => $deskripsiTarget,
             'polarity'         => $polarity,
             'satuan'           => $satuan,
@@ -492,8 +430,6 @@ class KpiPegawaiController extends BaseController
         if (!$this->canAccessPegawai($induk['pegawai_id'])) return $this->forbidden();
 
         $nama              = trim($this->request->getPost('nama_turunan')      ?? '');
-        $bobot             = (float)$this->request->getPost('bobot');
-        $target            = (float)$this->request->getPost('target');
         $deskripsiTarget   = trim($this->request->getPost('deskripsi_target')  ?? '') ?: null;
         $polarity          = $this->request->getPost('polarity')           ?? 'max';
         $perubahanPolarityRaw = $this->request->getPost('perubahan_polarity')  ?? 'pos';
@@ -507,47 +443,16 @@ class KpiPegawaiController extends BaseController
                              ->with('error', 'Nama Parameter Turunan wajib diisi.');
         }
 
-        if ($bobot <= 0) {
-            return redirect()->to(base_url("kpi-pegawai/edit/{$induk['pegawai_id']}"))
-                             ->with('error', 'Bobot Parameter Turunan harus lebih besar dari 0.');
-        }
-
-        // Target tidak bermakna untuk polarity 'special' (penilaian Ada/Tidak
-        // Ada, tidak dibandingkan ke target) — jadi tidak diwajibkan > 0
-        // khusus untuk polarity ini.
-        if ($target <= 0 && $polarity !== 'special') {
-            return redirect()->to(base_url("kpi-pegawai/edit/{$induk['pegawai_id']}"))
-                             ->with('error', 'Target Parameter Turunan harus lebih besar dari 0.');
-        }
+        // Bobot & Target TIDAK diisi/divalidasi di sini — dikelola di menu
+        // "Master Target" (per tahun/per bulan).
 
         if ($errPolarity = $this->validateTurunanPolarityData($polarity)) {
             return redirect()->to(base_url("kpi-pegawai/edit/{$induk['pegawai_id']}"))
                              ->with('error', $errPolarity);
         }
 
-        // Validasi tegas Bobot, mengecualikan Turunan ini sendiri dari
-        // total saat ini agar tidak terjadi false-positive (nilai lama
-        // Turunan ini tidak boleh ikut dihitung dua kali bersama nilai
-        // barunya).
-        $totalBobotTurunanLain = $this->kpiPegawaiTurunanModel->getTotalBobot($turunan['kpi_pegawai_id'], $id);
-        $totalBobotSetelahDiubah = round($totalBobotTurunanLain + $bobot, 4);
-        $bobotInduk = round((float)$induk['bobot'], 4);
-
-        if ($totalBobotSetelahDiubah > $bobotInduk) {
-            $sisaBobot = round($bobotInduk - $totalBobotTurunanLain, 4);
-            return redirect()->to(base_url("kpi-pegawai/edit/{$induk['pegawai_id']}"))
-                             ->with('error',
-                                 'Total Bobot Parameter Turunan melebihi Bobot Parameter Induk. '
-                                 . 'Bobot maksimal untuk Turunan ini: ' . round($sisaBobot * 100, 2) . '%.');
-        }
-
-        // Validasi target dihapus — setiap Turunan kini punya Target
-        // independen dari Target Induk (beda satuan, beda makna).
-
         $this->kpiPegawaiTurunanModel->update($id, array_merge([
             'nama_turunan'     => $nama,
-            'bobot'            => $bobot,
-            'target'           => $target,
             'deskripsi_target' => $deskripsiTarget,
             'polarity'         => $polarity,
             'satuan'           => $satuan,

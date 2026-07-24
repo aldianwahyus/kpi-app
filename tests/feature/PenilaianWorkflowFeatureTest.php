@@ -234,11 +234,14 @@ final class PenilaianWorkflowFeatureTest extends KpiTestCase
         $turunanId = (new \App\Models\KpiPegawaiTurunanModel())->insert([
             'kpi_pegawai_id' => $kpId,
             'nama_turunan'   => 'Sub Parameter 1',
-            'bobot'          => 1.0000,
-            'target'         => 50,
             'polarity'       => 'max',
             'is_active'      => 1,
         ]);
+        // Dibuat SETELAH makePeriodeAktif(), jadi tidak ikut ter-auto-seed —
+        // Target Bulanan & Bobot Tahunan untuk Periode ini (Juni 2026) perlu
+        // di-set eksplisit di sini.
+        $this->makeKpiPegawaiTurunanTargetBulanan($turunanId, 2026, 6, 50);
+        $this->makeKpiPegawaiTurunanBobotTahunan($turunanId, 2026, 1.0000);
 
         $result = $this->withSession($this->sessionFor('drafter', 1, $pegawaiId))
             ->post('penilaian/ajaxHitungTurunan', [
@@ -491,11 +494,12 @@ final class PenilaianWorkflowFeatureTest extends KpiTestCase
         $turunanId = (new \App\Models\KpiPegawaiTurunanModel())->insert([
             'kpi_pegawai_id' => $kpId,
             'nama_turunan'   => 'Sub Tertimbang Rendah',
-            'bobot'          => 1.0000,
-            'target'         => 100,
             'polarity'       => 'tertimbang',
             'is_active'      => 1,
         ]);
+        // Dibuat SETELAH makePeriodeAktif(), jadi tidak ikut ter-auto-seed.
+        $this->makeKpiPegawaiTurunanTargetBulanan($turunanId, 2026, 6, 100);
+        $this->makeKpiPegawaiTurunanBobotTahunan($turunanId, 2026, 1.0000);
 
         $this->withSession($this->sessionFor('drafter', 1, $pegawaiId))
             ->post("penilaian/store/{$pegawaiId}", [

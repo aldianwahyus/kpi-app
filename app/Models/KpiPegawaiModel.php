@@ -39,6 +39,65 @@ class KpiPegawaiModel extends Model
             ->get()->getResultArray();
     }
 
+    /**
+     * Ambil KPI pegawai beserta detail KPI, dengan Target & Bobot yang
+     * SUDAH DIRESOLVE dari Master Target untuk satu Periode tertentu.
+     *   - target : rata-rata Target Bulanan (Master Target) untuk seluruh
+     *     bulan yang dicakup Periode ini (1 bulan untuk Bulanan, 3 untuk
+     *     Triwulan, dst — lihat PeriodeModel::getBulanTahunList()). NULL
+     *     jika ADA bulan dalam rentang itu yang Target-nya belum diisi di
+     *     Master Target (pemanggil WAJIB memeriksa ini & memblokir).
+     *   - bobot  : Bobot Tahunan (Master Target) untuk tahun Periode ini.
+     *     NULL jika belum diisi di Master Target.
+     */
+    public function getByPegawaiUntukPeriode(int $pegawaiId, array $periode): array
+    {
+        $assigned = $this->getByPegawai($pegawaiId);
+        if (empty($assigned)) {
+            return [];
+        }
+
+        $kpiPegawaiIds  = array_column($assigned, 'id');
+        $periodeModel   = new PeriodeModel();
+        $bulanTahunList = $periodeModel->getBulanTahunList($periode);
+        $tahunList      = array_values(array_unique(array_column($bulanTahunList, 'tahun')));
+        $tahunAnchor    = (int)date('Y', strtotime($periode['tgl_mulai']));
+
+        $targetIndexed = (new KpiPegawaiTargetBulananModel())
+            ->getIndexedByRefAndTahunList($kpiPegawaiIds, $tahunList);
+        $bobotIndexed  = (new KpiPegawaiBobotTahunanModel())
+            ->getIndexedByRefAndTahun($kpiPegawaiIds, $tahunAnchor);
+
+        foreach ($assigned as &$row) {
+            $row['bobot_dasar'] = $row['bobot'];
+            $row['bobot']       = $bobotIndexed[$row['id']] ?? null;
+            $row['target']      = self::hitungTargetEfektif($targetIndexed[$row['id']] ?? [], $bulanTahunList);
+        }
+        unset($row);
+
+        return $assigned;
+    }
+
+    /**
+     * Hitung rata-rata Target Bulanan untuk daftar (tahun,bulan) yang
+     * dibutuhkan satu Periode. Mengembalikan NULL jika ADA satu saja bulan
+     * yang belum diisi (all-or-nothing) — sesuai keputusan bisnis: Periode
+     * Triwulan/Semester/Tahunan tidak boleh dihitung dari data yang tidak
+     * lengkap.
+     */
+    public static function hitungTargetEfektif(array $bulanMap, array $bulanTahunList): ?float
+    {
+        $nilai = [];
+        foreach ($bulanTahunList as $bt) {
+            $key = $bt['tahun'] . '-' . $bt['bulan'];
+            if (!array_key_exists($key, $bulanMap) || $bulanMap[$key] === null) {
+                return null;
+            }
+            $nilai[] = (float)$bulanMap[$key];
+        }
+        return empty($nilai) ? null : array_sum($nilai) / count($nilai);
+    }
+
     // Kelompokkan per perspektif
     public function getGroupedByPerspektif(int $pegawaiId): array
     {
@@ -73,15 +132,55 @@ class KpiPegawaiModel extends Model
         return $builder->countAllResults() > 0;
     }
 
-    // Total bobot KPI pegawai
-    public function getTotalBobot(int $pegawaiId): float
+    // Total Bobot Tahunan (Master Target) untuk tahun Periode ini — dipakai
+    // sebagai syarat "harus 100%" sebelum Penilaian pada Periode itu bisa
+    // diisi. Bobot yang belum diisi di Master Target dihitung sebagai 0
+    // (bukan diabaikan), sehingga total otomatis tidak akan genap 100%
+    // selama masih ada yang belum lengkap.
+    public function getTotalBobotUntukPeriode(int $pegawaiId, array $periode): float
     {
-        $result = $this->db->table('kpi_pegawai')
-            ->selectSum('bobot')
+        $assignedIds = $this->select('id')
             ->where('pegawai_id', $pegawaiId)
             ->where('is_active', 1)
-            ->get()->getRowArray();
-        return round((float)($result['bobot'] ?? 0), 4);
+            ->findColumn('id') ?? [];
+
+        if (empty($assignedIds)) {
+            return 0.0;
+        }
+
+        $tahun = (int)date('Y', strtotime($periode['tgl_mulai']));
+        $bobotIndexed = (new KpiPegawaiBobotTahunanModel())
+            ->getIndexedByRefAndTahun($assignedIds, $tahun);
+
+        $total = 0.0;
+        foreach ($assignedIds as $id) {
+            $total += (float)($bobotIndexed[$id] ?? 0);
+        }
+        return round($total, 4);
+    }
+
+    // Total Bobot Tahunan (Master Target) untuk satu tahun tertentu —
+    // dipakai layar Master Target sendiri (validasi 100% saat menyimpan,
+    // sebelum ada konteks Periode yang dibuka).
+    public function getTotalBobotUntukTahun(int $pegawaiId, int $tahun): float
+    {
+        $assignedIds = $this->select('id')
+            ->where('pegawai_id', $pegawaiId)
+            ->where('is_active', 1)
+            ->findColumn('id') ?? [];
+
+        if (empty($assignedIds)) {
+            return 0.0;
+        }
+
+        $bobotIndexed = (new KpiPegawaiBobotTahunanModel())
+            ->getIndexedByRefAndTahun($assignedIds, $tahun);
+
+        $total = 0.0;
+        foreach ($assignedIds as $id) {
+            $total += (float)($bobotIndexed[$id] ?? 0);
+        }
+        return round($total, 4);
     }
 
     // Hapus semua KPI pegawai (untuk re-assign)

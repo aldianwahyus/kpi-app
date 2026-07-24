@@ -140,7 +140,7 @@ $routes->group('', ['filter' => 'auth'], function($routes) {
     $routes->get('kpi-pegawai',                    'KpiPegawaiController::index');
     $routes->get('kpi-pegawai/edit/(:num)',        'KpiPegawaiController::edit/$1');
     $routes->post('kpi-pegawai/add/(:num)',        'KpiPegawaiController::add/$1');
-    $routes->post('kpi-pegawai/save-bobot/(:num)', 'KpiPegawaiController::saveBobot/$1');
+    $routes->post('kpi-pegawai/save-deskripsi/(:num)', 'KpiPegawaiController::saveDeskripsi/$1');
     $routes->get('kpi-pegawai/delete/(:num)',      'KpiPegawaiController::delete/$1');
     $routes->post('kpi-pegawai/copy/(:num)',       'KpiPegawaiController::copy/$1');
     $routes->post('kpi-pegawai/turunan/add/(:num)',    'KpiPegawaiController::addTurunan/$1');
@@ -153,6 +153,15 @@ $routes->group('', ['filter' => 'auth'], function($routes) {
     $routes->get('kpi-pegawai/import',             'KpiPegawaiController::importForm');
     $routes->get('kpi-pegawai/import-template',    'KpiPegawaiController::importTemplate');
     $routes->post('kpi-pegawai/import',            'KpiPegawaiController::importProcess');
+
+    // Master Target
+    $routes->get('master-target',                  'MasterTargetController::index');
+    $routes->get('master-target/edit/(:num)',       'MasterTargetController::edit/$1');
+    $routes->post('master-target/save/(:num)',      'MasterTargetController::save/$1');
+    $routes->get('master-target/import',            'MasterTargetController::importForm');
+    $routes->get('master-target/import-template',   'MasterTargetController::importTemplate');
+    $routes->post('master-target/import',           'MasterTargetController::importProcess');
+    $routes->post('master-target/copy/(:num)',      'MasterTargetController::copyDariPegawai/$1');
 
     // Approval
     $routes->post('penilaian/submit/(:num)',  'PenilaianController::submit/$1');

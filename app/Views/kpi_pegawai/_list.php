@@ -64,7 +64,6 @@ $ci = 0;
           <th>Jabatan</th>
           <th class="text-center">KPI Unit Kerja</th>
           <th class="text-center">Jml KPI Pegawai</th>
-          <th class="text-center">Total Bobot</th>
           <th class="text-center">Status</th>
           <th class="text-center">Aksi</th>
         </tr>
@@ -94,11 +93,6 @@ $ci = 0;
               <?= $s['jumlah_kpi'] ?? 0 ?> KPI
             </span>
           </td>
-          <td class="text-center fw-semibold"
-              style="color:<?= ($s['bobot_ok'] ?? false)
-                             ? '#375623' : '#BF9000' ?>">
-            <?= round(($s['total_bobot'] ?? 0) * 100, 2) ?>%
-          </td>
           <td class="text-center">
             <?php if (!($s['divisi_ok'] ?? false)): ?>
               <span class="badge"
@@ -110,15 +104,10 @@ $ci = 0;
                     style="background:#FFF3CD;color:#7F6000;font-size:10px">
                 Belum setup
               </span>
-            <?php elseif (!($s['bobot_ok'] ?? false)): ?>
-              <span class="badge"
-                    style="background:#FFF3CD;color:#7F6000;font-size:10px">
-                Bobot belum 100%
-              </span>
             <?php else: ?>
               <span class="badge"
                     style="background:#C6EFCE;color:#375623;font-size:10px">
-                ✓ Siap
+                ✓ <?= $s['jumlah_kpi'] ?> KPI di-assign
               </span>
             <?php endif; ?>
           </td>

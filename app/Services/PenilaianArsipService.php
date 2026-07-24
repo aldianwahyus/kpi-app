@@ -4,6 +4,12 @@ namespace App\Services;
 
 use App\Models\PenilaianArsipModel;
 use App\Models\PenilaianTurunanArsipModel;
+use App\Models\PeriodeModel;
+use App\Models\KpiPegawaiModel;
+use App\Models\KpiPegawaiTargetBulananModel;
+use App\Models\KpiPegawaiBobotTahunanModel;
+use App\Models\KpiPegawaiTurunanTargetBulananModel;
+use App\Models\KpiPegawaiTurunanBobotTahunanModel;
 use CodeIgniter\Database\BaseConnection;
 use Config\Database;
 
@@ -42,6 +48,15 @@ class PenilaianArsipService
             throw new \InvalidArgumentException("Periode #{$periodeId} tidak ditemukan.");
         }
 
+        // Rentang bulan Master Target yang dicakup Periode ini — dipakai
+        // untuk meresolve Target (rata-rata bulanan) & Bobot (tahunan) yang
+        // SESUNGGUHNYA dipakai saat skor dihitung, sama seperti resolver di
+        // KpiPegawaiModel::getByPegawaiUntukPeriode().
+        $periodeModel   = new PeriodeModel();
+        $bulanTahunList = $periodeModel->getBulanTahunList($periode);
+        $tahunList      = array_values(array_unique(array_column($bulanTahunList, 'tahun')));
+        $tahunAnchor    = (int)date('Y', strtotime($periode['tgl_mulai']));
+
         // Hapus arsip lama (jika ada) — anak (turunan) dihapus lebih dulu
         // karena tidak ada FK constraint yang otomatis melakukan cascade.
         $arsipLamaIds = $this->arsipModel->where('periode_id', $periodeId)->findColumn('id') ?? [];
@@ -57,7 +72,7 @@ class PenilaianArsipService
         // sendiri (dan detail Turunannya) tetap harus diarsipkan apa adanya.
         $rows = $this->db->table('penilaian p')
             ->select('p.id as penilaian_id, p.pegawai_id, p.kpi_id,
-                      p.target as p_target, p.realisasi, p.realisasi_harian,
+                      p.realisasi, p.realisasi_harian,
                       p.skor, p.nilai_kontribusi, p.catatan, p.status,
                       p.submitted_at, p.approved_by, p.approved_at, p.reject_note,
                       p.input_by,
@@ -68,7 +83,7 @@ class PenilaianArsipService
                       k.perspektif as kpi_perspektif,
                       k.polarity, k.perubahan_polarity, k.sifat_khusus,
                       k.toleransi_skor4, k.toleransi_skor3, k.toleransi_skor2,
-                      kp.bobot as kp_bobot, kp.target as kp_target')
+                      kp.id as kpi_pegawai_id')
             ->join('kpi_unit k', 'k.id = p.kpi_id')
             ->join('pegawai pg', 'pg.id = p.pegawai_id', 'left')
             ->join('divisi d', 'd.id = pg.divisi_id', 'left')
@@ -80,6 +95,24 @@ class PenilaianArsipService
         if (empty($rows)) {
             return 0;
         }
+
+        // Resolve Bobot (Tahunan) & Target (rata-rata Bulanan) dari Master
+        // Target untuk seluruh KPI Induk yang muncul di baris Penilaian ini
+        // — dilakukan satu kali secara batch, bukan per-baris.
+        $kpiPegawaiIds = array_values(array_unique(array_filter(array_column($rows, 'kpi_pegawai_id'))));
+        $targetIndukIndexed = (new KpiPegawaiTargetBulananModel())
+            ->getIndexedByRefAndTahunList($kpiPegawaiIds, $tahunList);
+        $bobotIndukIndexed = (new KpiPegawaiBobotTahunanModel())
+            ->getIndexedByRefAndTahun($kpiPegawaiIds, $tahunAnchor);
+
+        foreach ($rows as &$row) {
+            $kpId = $row['kpi_pegawai_id'];
+            $row['kp_bobot']  = $kpId ? ($bobotIndukIndexed[$kpId] ?? null) : null;
+            $row['kp_target'] = $kpId
+                ? KpiPegawaiModel::hitungTargetEfektif($targetIndukIndexed[$kpId] ?? [], $bulanTahunList)
+                : null;
+        }
+        unset($row);
 
         // Kumpulkan nama user (approved_by/input_by) sekali di awal, alih-alih
         // query berulang per baris.
@@ -122,11 +155,13 @@ class PenilaianArsipService
                 'toleransi_skor4'    => $row['toleransi_skor4'],
                 'toleransi_skor3'    => $row['toleransi_skor3'],
                 'toleransi_skor2'    => $row['toleransi_skor2'],
-                // Bobot & Target Induk memakai konfigurasi kpi_pegawai (yang
-                // sesungguhnya dipakai saat skor dihitung) — bukan kpi_unit,
-                // karena kpi_pegawai bisa override target per pegawai.
+                // Bobot & Target Induk memakai nilai EFEKTIF dari Master
+                // Target pada saat Periode ini ditutup — Bobot Tahunan untuk
+                // tahun Periode ini, Target rata-rata Bulanan untuk rentang
+                // bulan yang dicakup Periode ini (inilah yang sesungguhnya
+                // dipakai saat skor dihitung).
                 'bobot'              => $row['kp_bobot'] ?? 0,
-                'target'             => $row['kp_target'] ?? $row['p_target'],
+                'target'             => $row['kp_target'],
                 'realisasi'          => $row['realisasi'],
                 'realisasi_harian'   => $row['realisasi_harian'],
                 'skor'               => $row['skor'],
@@ -145,15 +180,31 @@ class PenilaianArsipService
             $jumlahDiarsipkan++;
 
             // Arsipkan Parameter Turunan (jika ada) untuk baris Penilaian ini
+            // — Bobot & Target EFEKTIF dari Master Target, sama seperti Induk.
             $turunanRows = $this->db->table('penilaian_turunan pt')
                 ->select('pt.realisasi, pt.realisasi_harian, pt.skor, pt.nilai_kontribusi, pt.catatan,
+                          kpt.id as kpi_pegawai_turunan_id,
                           kpt.nama_turunan, kpt.satuan, kpt.polarity, kpt.perubahan_polarity,
-                          kpt.sifat_khusus, kpt.toleransi_skor4, kpt.toleransi_skor3, kpt.toleransi_skor2,
-                          kpt.bobot, kpt.target, kpt.urutan')
+                          kpt.sifat_khusus, kpt.toleransi_skor4, kpt.toleransi_skor3, kpt.toleransi_skor2, kpt.urutan')
                 ->join('kpi_pegawai_turunan kpt', 'kpt.id = pt.kpi_pegawai_turunan_id')
                 ->where('pt.penilaian_id', $row['penilaian_id'])
                 ->orderBy('kpt.urutan', 'ASC')
                 ->get()->getResultArray();
+
+            if (!empty($turunanRows)) {
+                $turunanIds = array_column($turunanRows, 'kpi_pegawai_turunan_id');
+                $targetTurunanIndexed = (new KpiPegawaiTurunanTargetBulananModel())
+                    ->getIndexedByRefAndTahunList($turunanIds, $tahunList);
+                $bobotTurunanIndexed = (new KpiPegawaiTurunanBobotTahunanModel())
+                    ->getIndexedByRefAndTahun($turunanIds, $tahunAnchor);
+
+                foreach ($turunanRows as &$t) {
+                    $tId = $t['kpi_pegawai_turunan_id'];
+                    $t['bobot']  = $bobotTurunanIndexed[$tId] ?? null;
+                    $t['target'] = KpiPegawaiModel::hitungTargetEfektif($targetTurunanIndexed[$tId] ?? [], $bulanTahunList);
+                }
+                unset($t);
+            }
 
             foreach ($turunanRows as $t) {
                 $this->arsipTurunanModel->insert([
@@ -166,7 +217,7 @@ class PenilaianArsipService
                     'toleransi_skor4'    => $t['toleransi_skor4'],
                     'toleransi_skor3'    => $t['toleransi_skor3'],
                     'toleransi_skor2'    => $t['toleransi_skor2'],
-                    'bobot'              => $t['bobot'],
+                    'bobot'              => $t['bobot'] ?? 0,
                     'target'             => $t['target'],
                     'realisasi'          => $t['realisasi'],
                     'realisasi_harian'   => $t['realisasi_harian'],

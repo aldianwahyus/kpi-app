@@ -155,6 +155,7 @@ $canShow = function($kode) use ($permModel, $role) {
       <li class="nav-item"><a href="<?= base_url('master/unit-kerja') ?>" style="display:flex; align-items:center; gap:8px; text-decoration:none;"><i class="ti ti-building-community"></i> Unit Kerja</a></li>
       <li class="nav-item"><a href="<?= base_url('master/kpi-divisi') ?>" style="display:flex; align-items:center; gap:8px; text-decoration:none;"><i class="ti ti-sitemap"></i> KPI per Unit Kerja</a></li>
       <li class="nav-item"><a href="<?= base_url('kpi-pegawai') ?>" style="display:flex; align-items:center; gap:8px; text-decoration:none;"><i class="ti ti-user-check"></i> KPI Per Pegawai</a></li>
+      <li class="nav-item"><a href="<?= base_url('master-target') ?>" style="display:flex; align-items:center; gap:8px; text-decoration:none;"><i class="ti ti-target-arrow"></i> Master Target</a></li>
       <li class="nav-item"><a href="<?= base_url('pegawai') ?>" style="display:flex; align-items:center; gap:8px; text-decoration:none;"><i class="ti ti-users"></i> Data Pegawai</a></li>
       <li class="nav-item"><a href="<?= base_url('master/periode') ?>" style="display:flex; align-items:center; gap:8px; text-decoration:none;"><i class="ti ti-calendar"></i> Periode</a></li>
       <li class="nav-item"><a href="<?= base_url('master/users') ?>" style="display:flex; align-items:center; gap:8px; text-decoration:none;"><i class="ti ti-settings"></i> Manajemen User</a></li>

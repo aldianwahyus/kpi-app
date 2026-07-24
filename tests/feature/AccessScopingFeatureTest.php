@@ -55,7 +55,12 @@ final class AccessScopingFeatureTest extends KpiTestCase
 
         $this->makePeriodeAktif();
         $kpiUnitId = $this->makeKpiUnit($direktoratId, 'TK-F1');
-        $this->makeKpiPegawai($targetSatuDivisi, $divisiA, $kpiUnitId);
+        // Dibuat SETELAH makePeriodeAktif(), jadi tidak ikut ter-auto-seed —
+        // Bobot Tahunan & Target Bulanan untuk Periode ini (Juni 2026) perlu
+        // di-set eksplisit di sini.
+        $kpId = $this->makeKpiPegawai($targetSatuDivisi, $divisiA, $kpiUnitId);
+        $this->makeKpiPegawaiBobotTahunan($kpId, 2026, 1.0000);
+        $this->makeKpiPegawaiTargetBulanan($kpId, 2026, 6, 100);
 
         $result = $this->withSession($this->sessionFor('drafter', 1, $drafterPegawaiId))
             ->get("penilaian/form/{$targetSatuDivisi}");

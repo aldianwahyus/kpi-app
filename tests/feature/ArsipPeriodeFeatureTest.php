@@ -84,9 +84,10 @@ final class ArsipPeriodeFeatureTest extends KpiTestCase
             ->first();
         $this->assertEqualsWithDelta(0.5, (float)$arsipSebelum['bobot'], 0.001);
 
-        // Ubah konfigurasi LIVE kpi_pegawai (mensimulasikan admin mengubah
-        // bobot untuk periode berikutnya) — arsip TIDAK boleh ikut berubah.
-        (new KpiPegawaiModel())->update($ctx['kpA'], ['bobot' => 0.9999]);
+        // Ubah Bobot Tahunan LIVE di Master Target (mensimulasikan admin
+        // mengubah bobot untuk periode berikutnya) — arsip TIDAK boleh ikut
+        // berubah.
+        $this->makeKpiPegawaiBobotTahunan($ctx['kpA'], 2026, 0.9999);
 
         $arsipSesudah = (new PenilaianArsipModel())
             ->where('periode_id', $ctx['periodeId'])
@@ -94,7 +95,7 @@ final class ArsipPeriodeFeatureTest extends KpiTestCase
             ->first();
         $this->assertEqualsWithDelta(
             0.5, (float)$arsipSesudah['bobot'], 0.001,
-            'Bobot pada arsip harus tetap 0.5 (nilai saat ditutup), tidak boleh ikut berubah mengikuti kpi_pegawai terkini.'
+            'Bobot pada arsip harus tetap 0.5 (nilai saat ditutup), tidak boleh ikut berubah mengikuti Master Target terkini.'
         );
     }
 
@@ -121,10 +122,10 @@ final class ArsipPeriodeFeatureTest extends KpiTestCase
         $service->arsipkanPeriode($ctx['periodeId']);
         $jumlahPertama = (new PenilaianArsipModel())->where('periode_id', $ctx['periodeId'])->countAllResults();
 
-        // Ubah bobot live lalu arsipkan ULANG (mensimulasikan buka-kembali
-        // lalu tutup-lagi) — arsip harus MENCERMINKAN kondisi terbaru,
-        // bukan menumpuk duplikat.
-        (new KpiPegawaiModel())->update($ctx['kpA'], ['bobot' => 0.75]);
+        // Ubah Bobot Tahunan live lalu arsipkan ULANG (mensimulasikan
+        // buka-kembali lalu tutup-lagi) — arsip harus MENCERMINKAN kondisi
+        // terbaru, bukan menumpuk duplikat.
+        $this->makeKpiPegawaiBobotTahunan($ctx['kpA'], 2026, 0.75);
         $service->arsipkanPeriode($ctx['periodeId']);
 
         $jumlahKedua = (new PenilaianArsipModel())->where('periode_id', $ctx['periodeId'])->countAllResults();

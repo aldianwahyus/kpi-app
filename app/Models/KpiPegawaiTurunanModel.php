@@ -26,44 +26,38 @@ class KpiPegawaiTurunanModel extends Model
                     ->findAll();
     }
 
-    // Cek apakah suatu Parameter Induk sudah memiliki Turunan
-    public function hasTurunan(int $kpiPegawaiId): bool
+    /**
+     * Sama seperti getByKpiPegawai(), tapi Target & Bobot sudah diresolve
+     * dari Master Target untuk satu Periode tertentu (rata-rata Target
+     * Bulanan sesuai rentang bulan Periode; Bobot Tahunan untuk tahun
+     * Periode ini). NULL jika belum lengkap diisi di Master Target.
+     */
+    public function getByKpiPegawaiUntukPeriode(int $kpiPegawaiId, array $periode): array
     {
-        return $this->where('kpi_pegawai_id', $kpiPegawaiId)
-                    ->where('is_active', 1)
-                    ->countAllResults() > 0;
-    }
-
-    // Total Bobot seluruh Turunan milik satu Induk — dipakai untuk validasi
-    // bahwa SUM Bobot Turunan harus tepat sama dengan Bobot Induk.
-    // $excludeId dipakai saat mengedit satu Turunan, agar Turunan yang
-    // sedang diedit tidak ikut dihitung dengan nilai lamanya.
-    public function getTotalBobot(int $kpiPegawaiId, ?int $excludeId = null): float
-    {
-        $builder = $this->where('kpi_pegawai_id', $kpiPegawaiId)
-                        ->where('is_active', 1);
-        if ($excludeId) {
-            $builder->where('id !=', $excludeId);
+        $list = $this->getByKpiPegawai($kpiPegawaiId);
+        if (empty($list)) {
+            return [];
         }
-        $result = $builder->selectSum('bobot')->get()->getRowArray();
-        return round((float)($result['bobot'] ?? 0), 4);
-    }
 
-    // Total Target seluruh Turunan milik satu Induk — dipakai untuk
-    // validasi bahwa SUM Target Turunan harus tepat sama dengan
-    // Target Induk (pagu/plafon yang ditentukan manual oleh Admin),
-    // dengan aturan yang sama persis seperti validasi Bobot Turunan.
-    // $excludeId dipakai saat mengedit satu Turunan, agar Turunan yang
-    // sedang diedit tidak ikut dihitung dengan nilai lamanya.
-    public function getTotalTarget(int $kpiPegawaiId, ?int $excludeId = null): float
-    {
-        $builder = $this->where('kpi_pegawai_id', $kpiPegawaiId)
-                        ->where('is_active', 1);
-        if ($excludeId) {
-            $builder->where('id !=', $excludeId);
+        $turunanIds     = array_column($list, 'id');
+        $periodeModel   = new PeriodeModel();
+        $bulanTahunList = $periodeModel->getBulanTahunList($periode);
+        $tahunList      = array_values(array_unique(array_column($bulanTahunList, 'tahun')));
+        $tahunAnchor    = (int)date('Y', strtotime($periode['tgl_mulai']));
+
+        $targetIndexed = (new KpiPegawaiTurunanTargetBulananModel())
+            ->getIndexedByRefAndTahunList($turunanIds, $tahunList);
+        $bobotIndexed  = (new KpiPegawaiTurunanBobotTahunanModel())
+            ->getIndexedByRefAndTahun($turunanIds, $tahunAnchor);
+
+        foreach ($list as &$row) {
+            $row['bobot_dasar'] = $row['bobot'];
+            $row['bobot']       = $bobotIndexed[$row['id']] ?? null;
+            $row['target']      = KpiPegawaiModel::hitungTargetEfektif($targetIndexed[$row['id']] ?? [], $bulanTahunList);
         }
-        $result = $builder->selectSum('target')->get()->getRowArray();
-        return round((float)($result['target'] ?? 0), 2);
+        unset($row);
+
+        return $list;
     }
 
     // Hapus seluruh Turunan milik satu Induk (dipakai saat Induk dihapus

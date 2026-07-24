@@ -52,6 +52,7 @@ class PeriodeController extends BaseController
         $rules = [
             'nama'        => 'required|trim|min_length[3]',
             'kode'        => 'required|trim|regex_match[/^\S+$/]|is_unique[periode.kode]',
+            'jenis'       => 'required|in_list[bulanan,triwulan,semester,tahunan]',
             'tgl_mulai'   => 'required|valid_date',
             'tgl_selesai' => 'required|valid_date',
         ];
@@ -66,6 +67,10 @@ class PeriodeController extends BaseController
                 'required'    => 'Kode periode wajib diisi.',
                 'regex_match' => 'Kode periode tidak boleh mengandung spasi atau whitespace.',
                 'is_unique'   => 'Kode periode sudah digunakan, gunakan kode lain.'
+            ],
+            'jenis' => [
+                'required' => 'Jenis Periode wajib dipilih.',
+                'in_list'  => 'Jenis Periode tidak valid.',
             ],
             'tgl_mulai' => [
                 'required'   => 'Tanggal mulai wajib diisi.',
@@ -86,6 +91,7 @@ class PeriodeController extends BaseController
 
         $kode   = strtoupper(trim($this->request->getPost('kode')));
         $status = $this->request->getPost('status');
+        $jenis  = $this->request->getPost('jenis');
 
         // 4. Pastikan hanya ada 1 periode aktif
         if ($status === 'aktif' && $this->periodeModel->hasAktif()) {
@@ -94,10 +100,27 @@ class PeriodeController extends BaseController
                 ->with('error', 'Sudah ada periode aktif. Tutup periode aktif dulu sebelum mengaktifkan yang baru.');
         }
 
+        // 4b. Rentang tanggal harus cocok dengan jumlah bulan Jenis Periode
+        // yang dipilih (Bulanan=1, Triwulan=3, Semester=6, Tahunan=12) —
+        // rentang yang tidak cocok akan membuat perhitungan rata-rata
+        // Target dari Master Target keliru.
+        $periodeUntukValidasi = [
+            'jenis'       => $jenis,
+            'tgl_mulai'   => $this->request->getPost('tgl_mulai'),
+            'tgl_selesai' => $this->request->getPost('tgl_selesai'),
+        ];
+        if (!$this->periodeModel->jumlahBulanSesuaiJenis($periodeUntukValidasi)) {
+            $ekspektasi = \App\Models\PeriodeModel::JUMLAH_BULAN_PER_JENIS[$jenis] ?? '?';
+            return redirect()->back()
+                ->withInput()
+                ->with('error', "Rentang tanggal tidak sesuai dengan Jenis Periode \"{$jenis}\" (seharusnya mencakup {$ekspektasi} bulan kalender).");
+        }
+
         // 5. Insert Data Periode
         $this->periodeModel->insert([
             'nama'        => trim($this->request->getPost('nama')),
             'kode'        => $kode,
+            'jenis'       => $jenis,
             'tgl_mulai'   => $this->request->getPost('tgl_mulai'),
             'tgl_selesai' => $this->request->getPost('tgl_selesai'),
             'status'      => $status ?? 'draft',
@@ -138,6 +161,7 @@ class PeriodeController extends BaseController
         $rules = [
             'nama'        => 'required|trim|min_length[3]',
             'kode'        => "required|trim|regex_match[/^\S+$/]|is_unique[periode.kode,id,{$id}]",
+            'jenis'       => 'required|in_list[bulanan,triwulan,semester,tahunan]',
             'tgl_mulai'   => 'required|valid_date',
             'tgl_selesai' => 'required|valid_date',
         ];
@@ -152,6 +176,10 @@ class PeriodeController extends BaseController
                 'required'    => 'Kode periode wajib diisi.',
                 'regex_match' => 'Kode periode tidak boleh mengandung spasi atau whitespace.',
                 'is_unique'   => 'Kode periode sudah digunakan oleh data lain.'
+            ],
+            'jenis' => [
+                'required' => 'Jenis Periode wajib dipilih.',
+                'in_list'  => 'Jenis Periode tidak valid.',
             ],
             'tgl_mulai' => [
                 'required'   => 'Tanggal mulai wajib diisi.',
@@ -172,6 +200,7 @@ class PeriodeController extends BaseController
 
         $kode   = strtoupper(trim($this->request->getPost('kode')));
         $status = $this->request->getPost('status');
+        $jenis  = $this->request->getPost('jenis');
 
         // 4. Pastikan hanya ada 1 periode aktif
         if ($status === 'aktif' && $this->periodeModel->hasAktif($id)) {
@@ -180,10 +209,24 @@ class PeriodeController extends BaseController
                 ->with('error', 'Sudah ada periode aktif lain. Tutup periode aktif dulu.');
         }
 
+        // 4b. Rentang tanggal harus cocok dengan jumlah bulan Jenis Periode.
+        $periodeUntukValidasi = [
+            'jenis'       => $jenis,
+            'tgl_mulai'   => $this->request->getPost('tgl_mulai'),
+            'tgl_selesai' => $this->request->getPost('tgl_selesai'),
+        ];
+        if (!$this->periodeModel->jumlahBulanSesuaiJenis($periodeUntukValidasi)) {
+            $ekspektasi = \App\Models\PeriodeModel::JUMLAH_BULAN_PER_JENIS[$jenis] ?? '?';
+            return redirect()->back()
+                ->withInput()
+                ->with('error', "Rentang tanggal tidak sesuai dengan Jenis Periode \"{$jenis}\" (seharusnya mencakup {$ekspektasi} bulan kalender).");
+        }
+
         // 5. Update Data Periode
         $this->periodeModel->update($id, [
             'nama'        => trim($this->request->getPost('nama')),
             'kode'        => $kode,
+            'jenis'       => $jenis,
             'tgl_mulai'   => $this->request->getPost('tgl_mulai'),
             'tgl_selesai' => $this->request->getPost('tgl_selesai'),
             'status'      => $status,

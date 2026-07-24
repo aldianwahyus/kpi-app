@@ -5,6 +5,7 @@ use App\Models\PenilaianModel;
 use App\Models\PeriodeModel;
 use App\Models\DivisiModel;
 use App\Models\DirektoratModel;
+use App\Models\KpiPegawaiBobotTahunanModel;
 use App\Services\KpiCalculationService;
 
 class RekapController extends BaseController
@@ -170,7 +171,7 @@ class RekapController extends BaseController
         $detail = $this->penilaianModel->db->table('penilaian p')
             ->select('p.*, k.nama_kpi, k.kode, k.satuan,
                       k.polarity, k.perubahan_polarity,
-                      k.perspektif, kp.bobot')
+                      k.perspektif, kp.id as kpi_pegawai_id')
             ->join('kpi_unit k', 'k.id = p.kpi_id')
             ->join('kpi_pegawai kp',
                    'kp.kpi_id = p.kpi_id AND kp.pegawai_id = p.pegawai_id')
@@ -178,6 +179,19 @@ class RekapController extends BaseController
             ->where('p.periode_id', $periodeId)
             ->orderBy('k.perspektif', 'ASC')
             ->get()->getResultArray();
+
+        // Bobot ditampilkan dari Master Target (Bobot Tahunan), bukan kolom
+        // legacy kpi_pegawai.bobot yang sudah tidak lagi dikelola sejak
+        // Bobot dipindah sepenuhnya ke menu "Master Target".
+        if (!empty($detail) && $periode) {
+            $tahun = (int)date('Y', strtotime($periode['tgl_mulai']));
+            $kpiPegawaiIds = array_values(array_unique(array_filter(array_column($detail, 'kpi_pegawai_id'))));
+            $bobotIndexed = (new KpiPegawaiBobotTahunanModel())->getIndexedByRefAndTahun($kpiPegawaiIds, $tahun);
+            foreach ($detail as &$row) {
+                $row['bobot'] = $bobotIndexed[$row['kpi_pegawai_id']] ?? 0;
+            }
+            unset($row);
+        }
 
         // Kelompokkan per perspektif
         $detailGrouped = [];

@@ -14,27 +14,27 @@ use App\Services\AuditService;
 
 class PenilaianController extends BaseController
 {
-    protected PenilaianModel         $penilaianModel;
-    protected PegawaiModel           $pegawaiModel;
-    protected KpiPegawaiModel        $kpiPegawaiModel;
-    protected KpiPegawaiTurunanModel $kpiPegawaiTurunanModel;
-    protected PenilaianTurunanModel  $penilaianTurunanModel;
-    protected PeriodeModel           $periodeModel;
-    protected KpiCalculationService  $calculator;
-    protected AuditService           $auditService;
-    protected AuditLogModel          $auditLogModel;
+    protected PenilaianModel               $penilaianModel;
+    protected PegawaiModel                 $pegawaiModel;
+    protected KpiPegawaiModel              $kpiPegawaiModel;
+    protected KpiPegawaiTurunanModel       $kpiPegawaiTurunanModel;
+    protected PenilaianTurunanModel        $penilaianTurunanModel;
+    protected PeriodeModel                 $periodeModel;
+    protected KpiCalculationService        $calculator;
+    protected AuditService                 $auditService;
+    protected AuditLogModel                $auditLogModel;
 
     public function __construct()
     {
-        $this->penilaianModel         = new PenilaianModel();
-        $this->pegawaiModel           = new PegawaiModel();
-        $this->kpiPegawaiModel        = new KpiPegawaiModel();
-        $this->kpiPegawaiTurunanModel = new KpiPegawaiTurunanModel();
-        $this->penilaianTurunanModel  = new PenilaianTurunanModel();
-        $this->periodeModel           = new PeriodeModel();
-        $this->calculator             = new KpiCalculationService();
-        $this->auditService           = new AuditService();
-        $this->auditLogModel   = new AuditLogModel();
+        $this->penilaianModel               = new PenilaianModel();
+        $this->pegawaiModel                 = new PegawaiModel();
+        $this->kpiPegawaiModel              = new KpiPegawaiModel();
+        $this->kpiPegawaiTurunanModel       = new KpiPegawaiTurunanModel();
+        $this->penilaianTurunanModel        = new PenilaianTurunanModel();
+        $this->periodeModel                 = new PeriodeModel();
+        $this->calculator                   = new KpiCalculationService();
+        $this->auditService                 = new AuditService();
+        $this->auditLogModel                = new AuditLogModel();
     }
 
     public function index()
@@ -93,13 +93,22 @@ class PenilaianController extends BaseController
             $kpiSetupCount[(int)$r['pegawai_id']] = (int)$r['jumlah'];
         }
 
-        // Total bobot KPI aktif per pegawai — dipakai di view untuk
-        // menandai pegawai yang KPI-nya sudah di-setup tapi bobotnya
-        // belum genap 100%, supaya terlihat sebelum masuk ke form
-        // (yang akan menolak penginputan selama bobot belum 100%).
-        $kpiBobotTotal = [];
+        // Total bobot EFEKTIF (mempertimbangkan override per Periode) per
+        // pegawai untuk Periode Aktif — dipakai di view untuk menandai
+        // pegawai yang KPI-nya sudah di-setup tapi bobotnya belum genap
+        // 100%, supaya terlihat sebelum masuk ke form (yang akan menolak
+        // penginputan selama bobot belum 100% ATAU Target periode ini
+        // belum di-setup).
+        $kpiBobotTotal   = [];
+        $kpiTargetBelum  = [];
         foreach (array_keys($kpiSetupCount) as $pid) {
-            $kpiBobotTotal[$pid] = $this->kpiPegawaiModel->getTotalBobot($pid);
+            if ($periodeAktif) {
+                $kpiBobotTotal[$pid] = $this->kpiPegawaiModel->getTotalBobotUntukPeriode($pid, $periodeAktif);
+                $kpiTargetBelum[$pid] = $this->adaTargetBelumSetup($pid, $periodeAktif);
+            } else {
+                $kpiBobotTotal[$pid] = 0.0;
+                $kpiTargetBelum[$pid] = true;
+            }
         }
 
         return view('layouts/main', [
@@ -109,8 +118,9 @@ class PenilaianController extends BaseController
                 'rekap'         => $rekap,
                 'periodeAktif'  => $periodeAktif,
                 'role'          => $role,
-                'kpiSetupCount' => $kpiSetupCount,
-                'kpiBobotTotal' => $kpiBobotTotal,
+                'kpiSetupCount'  => $kpiSetupCount,
+                'kpiBobotTotal'  => $kpiBobotTotal,
+                'kpiTargetBelum' => $kpiTargetBelum,
             ]),
         ]);
     }
@@ -130,16 +140,17 @@ class PenilaianController extends BaseController
             return redirect()->to(base_url('penilaian'))->with('error', 'Pegawai tidak ditemukan.');
         }
 
-        $kpiList = $this->kpiPegawaiModel->getByPegawai($pegawaiId);
+        $kpiList = $this->kpiPegawaiModel->getByPegawaiUntukPeriode($pegawaiId, $periodeAktif);
 
         if (empty($kpiList)) return redirect()->to(base_url('penilaian'))->with('error', "KPI untuk {$pegawai['nama']} belum di-setup.");
 
-        // Penginputan penilaian hanya boleh dilakukan jika total bobot KPI
-        // pegawai sudah tepat 100% — bobot yang belum lengkap akan membuat
-        // Nilai Akhir/Yudisium hasil perhitungan menjadi keliru (skalanya
-        // tidak lagi 1.00-4.00 penuh), jadi diblokir sejak awal di sini,
-        // bukan dibiarkan tersimpan lalu ketahuan salah belakangan.
-        $totalBobot = $this->kpiPegawaiModel->getTotalBobot($pegawaiId);
+        // Penginputan penilaian hanya boleh dilakukan jika total Bobot Tahunan
+        // (Master Target) KPI pegawai untuk tahun Periode ini sudah tepat
+        // 100% — bobot yang belum lengkap akan membuat Nilai Akhir/Yudisium
+        // hasil perhitungan menjadi keliru (skalanya tidak lagi 1.00-4.00
+        // penuh), jadi diblokir sejak awal di sini, bukan dibiarkan
+        // tersimpan lalu ketahuan salah belakangan.
+        $totalBobot = $this->kpiPegawaiModel->getTotalBobotUntukPeriode($pegawaiId, $periodeAktif);
         if (round($totalBobot, 2) != 1.00) {
             return redirect()->to(base_url('penilaian'))
                              ->with('error',
@@ -152,17 +163,27 @@ class PenilaianController extends BaseController
         $nilaiAkhir = $this->penilaianModel->getNilaiAkhir($pegawaiId, $periodeAktif['id']);
         $approval   = $this->getStatusApproval($pegawaiId, $periodeAktif['id']);
 
-        // Ambil Parameter Turunan untuk setiap KPI Induk, dikelompokkan
-        // berdasarkan kp.id (id baris kpi_pegawai), serta realisasi
-        // Turunan yang sudah pernah diisi (jika baris penilaian Induk
-        // untuk periode ini sudah ada).
+        // Ambil Parameter Turunan untuk setiap KPI Induk (dengan Target/Bobot
+        // sudah diresolve untuk Periode ini), dikelompokkan berdasarkan kp.id
+        // (id baris kpi_pegawai), serta realisasi Turunan yang sudah pernah
+        // diisi (jika baris penilaian Induk untuk periode ini sudah ada).
+        // Sekaligus kumpulkan KPI/Turunan yang Target-nya BELUM di-setup
+        // untuk Periode ini — Target kini wajib disiapkan lebih dulu di
+        // menu "Master Target" sebelum Penilaian bisa diisi.
         $turunanByInduk    = [];
         $realisasiTurunan  = [];
+        $targetBelumSetup  = [];
         foreach ($kpiList as $kpi) {
-            $listTurunan = $this->kpiPegawaiTurunanModel->getByKpiPegawai($kpi['id']);
+            $listTurunan = $this->kpiPegawaiTurunanModel->getByKpiPegawaiUntukPeriode($kpi['id'], $periodeAktif);
             $turunanByInduk[$kpi['id']] = $listTurunan;
 
             if (!empty($listTurunan)) {
+                foreach ($listTurunan as $t) {
+                    if (($t['polarity'] ?? 'max') !== 'special' && $t['target'] === null) {
+                        $targetBelumSetup[] = "{$kpi['nama_kpi']} > {$t['nama_turunan']}";
+                    }
+                }
+
                 $existingInduk = $existing[$kpi['kpi_id']] ?? null;
                 if ($existingInduk) {
                     $realisasiTurunan[$kpi['id']] = $this->penilaianTurunanModel
@@ -170,7 +191,17 @@ class PenilaianController extends BaseController
                 } else {
                     $realisasiTurunan[$kpi['id']] = [];
                 }
+            } elseif (($kpi['polarity'] ?? 'max') !== 'special' && $kpi['target'] === null) {
+                $targetBelumSetup[] = $kpi['nama_kpi'];
             }
+        }
+
+        if (!empty($targetBelumSetup)) {
+            return redirect()->to(base_url('penilaian'))
+                             ->with('error',
+                                 "Target untuk Periode \"{$periodeAktif['nama']}\" belum disiapkan pada KPI: "
+                                 . implode(', ', $targetBelumSetup)
+                                 . ". Silakan lengkapi terlebih dahulu di Master Target.");
         }
 
         $kpiGrouped = [];
@@ -203,10 +234,11 @@ class PenilaianController extends BaseController
         }
 
         // Pertahanan tambahan (selain di form()): tolak penyimpanan jika
-        // bobot KPI pegawai belum tepat 100%, seandainya store() dipanggil
-        // langsung tanpa melalui form() (mis. bobot berubah setelah form
-        // dibuka, atau permintaan POST manual).
-        $totalBobot = $this->kpiPegawaiModel->getTotalBobot($pegawaiId);
+        // bobot EFEKTIF KPI pegawai belum tepat 100% untuk Periode Aktif
+        // ini, ATAU jika ada Target yang belum di-setup — seandainya
+        // store() dipanggil langsung tanpa melalui form() (mis. bobot
+        // berubah setelah form dibuka, atau permintaan POST manual).
+        $totalBobot = $this->kpiPegawaiModel->getTotalBobotUntukPeriode($pegawaiId, $periodeAktif);
         if (round($totalBobot, 2) != 1.00) {
             $pegawaiNama = $this->pegawaiModel->find($pegawaiId)['nama'] ?? 'pegawai ini';
             return redirect()->to(base_url('penilaian'))
@@ -214,6 +246,13 @@ class PenilaianController extends BaseController
                                  "KPI atas nama {$pegawaiNama} belum mencapai 100% "
                                  . "(saat ini " . round($totalBobot * 100, 2) . "%), "
                                  . "harap selesaikan setup KPI untuk pegawai tersebut.");
+        }
+
+        if ($this->adaTargetBelumSetup($pegawaiId, $periodeAktif)) {
+            return redirect()->to(base_url('penilaian'))
+                             ->with('error',
+                                 "Target untuk Periode \"{$periodeAktif['nama']}\" belum lengkap. "
+                                 . "Silakan lengkapi terlebih dahulu di Master Target.");
         }
 
         $role = session()->get('role');
@@ -240,7 +279,7 @@ class PenilaianController extends BaseController
                             ->with('error', 'Penilaian tidak dapat diedit pada status saat ini.');
         }
 
-        $kpiList                = $this->kpiPegawaiModel->getByPegawai($pegawaiId);
+        $kpiList                = $this->kpiPegawaiModel->getByPegawaiUntukPeriode($pegawaiId, $periodeAktif);
         $realisasi              = $this->request->getPost('realisasi')                ?? [];
         $realisasiHarian        = $this->request->getPost('realisasi_harian')          ?? [];
         $catatan                = $this->request->getPost('catatan')                   ?? [];
@@ -253,7 +292,7 @@ class PenilaianController extends BaseController
             $kpiId       = (int)$kpi['kpi_id'];
             $kpiPegawaiId = (int)$kpi['id'];
 
-            $listTurunan = $this->kpiPegawaiTurunanModel->getByKpiPegawai($kpiPegawaiId);
+            $listTurunan = $this->kpiPegawaiTurunanModel->getByKpiPegawaiUntukPeriode($kpiPegawaiId, $periodeAktif);
             $punyaTurunan = !empty($listTurunan);
 
             if ($punyaTurunan) {
@@ -542,8 +581,14 @@ class PenilaianController extends BaseController
             return $this->response->setJSON(['valid' => false, 'message' => 'Tidak memiliki akses.']);
         }
 
-        // 1. Ambil list KPI pegawai
-        $kpiList = $this->kpiPegawaiModel->getByPegawai($pegawaiId);
+        $periodeAktif = $this->periodeModel->getAktif();
+        if (!$periodeAktif) {
+            return $this->response->setJSON(['valid' => false, 'message' => 'Tidak ada periode aktif.']);
+        }
+
+        // 1. Ambil list KPI pegawai dengan Target/Bobot yang sudah diresolve
+        //    untuk Periode Aktif ini.
+        $kpiList = $this->kpiPegawaiModel->getByPegawaiUntukPeriode($pegawaiId, $periodeAktif);
 
         // 2. Cari KPI yang sedang diketik (menggunakan foreach standar CI4)
         $currentKpi = null;
@@ -560,6 +605,12 @@ class PenilaianController extends BaseController
         }
 
         $polarity = $currentKpi['polarity'] ?? 'max';
+
+        // Target untuk Periode ini belum di-setup -> tidak bisa dihitung
+        // sama sekali (kecuali 'special' yang tidak pernah memakai Target).
+        if ($polarity !== 'special' && $currentKpi['target'] === null) {
+            return $this->response->setJSON(['valid' => false, 'message' => 'Target untuk Periode ini belum di-setup.']);
+        }
 
         // Field belum diisi sama sekali -> jangan tampilkan preview skor
         // (berbeda dari realisasi = 0 yang sengaja diisi, yang tetap valid
@@ -619,6 +670,29 @@ class PenilaianController extends BaseController
             'color'      => $bootstrapColor,
             'csrf_hash'  => csrf_hash()
         ]);
+    }
+
+    /**
+     * Cek apakah pegawai ini punya KPI (Induk atau Turunan) yang Target-nya
+     * belum di-setup untuk Periode tertentu — dipakai sebagai gate sebelum
+     * Penilaian bisa diisi (form()/store()) maupun sebagai indikator visual
+     * di halaman daftar (index()). 'special' dikecualikan karena tidak
+     * pernah memakai Target.
+     */
+    private function adaTargetBelumSetup(int $pegawaiId, array $periode): bool
+    {
+        $kpiList = $this->kpiPegawaiModel->getByPegawaiUntukPeriode($pegawaiId, $periode);
+        foreach ($kpiList as $kpi) {
+            $listTurunan = $this->kpiPegawaiTurunanModel->getByKpiPegawaiUntukPeriode($kpi['id'], $periode);
+            if (!empty($listTurunan)) {
+                foreach ($listTurunan as $t) {
+                    if (($t['polarity'] ?? 'max') !== 'special' && $t['target'] === null) return true;
+                }
+            } elseif (($kpi['polarity'] ?? 'max') !== 'special' && $kpi['target'] === null) {
+                return true;
+            }
+        }
+        return false;
     }
 
     protected function getStatusApproval(int $pegawaiId, int $periodeId): array
@@ -682,6 +756,11 @@ class PenilaianController extends BaseController
             return $this->response->setJSON(['valid' => false, 'csrf_hash' => csrf_hash()]);
         }
 
+        $periodeAktif = $this->periodeModel->getAktif();
+        if (!$periodeAktif) {
+            return $this->response->setJSON(['valid' => false, 'csrf_hash' => csrf_hash()]);
+        }
+
         $turunan = $this->kpiPegawaiTurunanModel->find($turunanId);
         if (!$turunan) {
             return $this->response->setJSON(['valid' => false, 'csrf_hash' => csrf_hash()]);
@@ -693,7 +772,33 @@ class PenilaianController extends BaseController
             return $this->response->setJSON(['valid' => false, 'csrf_hash' => csrf_hash()]);
         }
 
+        // Timpa Target/Bobot dengan yang sudah diresolve dari Master Target
+        // untuk Periode Aktif ini (Target = rata-rata Target Bulanan sesuai
+        // rentang bulan Periode, NULL jika ada bulan yang belum diisi;
+        // Bobot = Bobot Tahunan untuk tahun Periode ini, NULL jika belum
+        // diisi).
+        $listTurunanResolved = $this->kpiPegawaiTurunanModel
+            ->getByKpiPegawaiUntukPeriode((int)$turunan['kpi_pegawai_id'], $periodeAktif);
+        $resolved = null;
+        foreach ($listTurunanResolved as $row) {
+            if ((int)$row['id'] === $turunanId) {
+                $resolved = $row;
+                break;
+            }
+        }
+        if (!$resolved) {
+            return $this->response->setJSON(['valid' => false, 'csrf_hash' => csrf_hash()]);
+        }
+        $turunan['target'] = $resolved['target'];
+        $turunan['bobot']  = $resolved['bobot'];
+
         $polarity = $turunan['polarity'] ?? 'max';
+
+        // Target untuk Periode ini belum di-setup -> tidak bisa dihitung
+        // (kecuali 'special' yang tidak pernah memakai Target).
+        if ($polarity !== 'special' && $turunan['target'] === null) {
+            return $this->response->setJSON(['valid' => false, 'csrf_hash' => csrf_hash()]);
+        }
 
         // Field belum diisi sama sekali -> jangan tampilkan preview skor
         // (berbeda dari realisasi = 0 yang sengaja diisi, yang tetap valid
@@ -708,7 +813,7 @@ class PenilaianController extends BaseController
         $realisasi       = (float)$realisasi;
         $realisasiHarian = $realisasiHarianRaw !== null && $realisasiHarianRaw !== '' ? (float)$realisasiHarianRaw : null;
 
-        $target = (float)($turunan['target'] ?? 100);
+        $target = (float)($turunan['target'] ?? 0);
         $bobot  = (float)($turunan['bobot']  ?? 0);
 
         // Dispatcher tunggal berdasarkan polarity (sama seperti ajaxHitung()

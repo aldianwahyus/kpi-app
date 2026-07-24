@@ -61,6 +61,23 @@
 
         <div class="col-md-6">
           <label class="form-label fw-semibold small">
+            Jenis Periode <span class="text-danger">*</span>
+          </label>
+          <select name="jenis" class="form-select form-select-sm" required>
+            <?php foreach (['bulanan'=>'Bulanan (1 bulan)','triwulan'=>'Triwulan (3 bulan)','semester'=>'Semester (6 bulan)','tahunan'=>'Tahunan (12 bulan)'] as $val => $lbl): ?>
+              <option value="<?= $val ?>"
+                <?= old('jenis', $periode['jenis'] ?? 'bulanan') === $val ? 'selected' : '' ?>>
+                <?= $lbl ?>
+              </option>
+            <?php endforeach; ?>
+          </select>
+          <small class="text-muted" style="font-size:11px">
+            Menentukan bulan mana dari Master Target yang dipakai/dirata-rata
+          </small>
+        </div>
+
+        <div class="col-md-6">
+          <label class="form-label fw-semibold small">
             Tanggal Mulai <span class="text-danger">*</span>
           </label>
           <input type="date" name="tgl_mulai" class="form-control form-control-sm"
@@ -84,6 +101,10 @@
             Kuartalan: <code>2025-Q1</code> &nbsp;|&nbsp;
             Semesteran: <code>2025-S1</code> &nbsp;|&nbsp;
             Bulanan: <code>2025-01</code>
+            <br>
+            <strong>Penting:</strong> rentang Tanggal Mulai–Selesai harus mencakup
+            jumlah bulan kalender yang sesuai dengan Jenis Periode yang dipilih
+            (Bulanan=1, Triwulan=3, Semester=6, Tahunan=12).
           </div>
         </div>
 

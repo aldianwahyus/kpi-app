@@ -6,6 +6,7 @@ use App\Models\PegawaiModel;
 use App\Models\PeriodeModel;
 use App\Models\DivisiModel;
 use App\Models\DirektoratModel;
+use App\Models\KpiPegawaiBobotTahunanModel;
 use App\Services\KpiCalculationService;
 use Dompdf\Dompdf;
 use Dompdf\Options;
@@ -136,7 +137,7 @@ class LaporanController extends BaseController
         // Detail per KPI
         $detail = $this->penilaianModel->db->table('penilaian p')
             ->select('p.*, k.nama_kpi, k.kode, k.satuan,
-                      k.polarity, k.perspektif, kp.bobot')
+                      k.polarity, k.perspektif, kp.id as kpi_pegawai_id')
             ->join('kpi_unit k', 'k.id = p.kpi_id')
             ->join('kpi_pegawai kp',
                    'kp.kpi_id = p.kpi_id AND kp.pegawai_id = p.pegawai_id')
@@ -144,6 +145,7 @@ class LaporanController extends BaseController
             ->where('p.periode_id', $periodeId)
             ->orderBy('k.perspektif', 'ASC')
             ->get()->getResultArray();
+        $this->resolveBobotUntukDetail($detail, $periode);
 
         // Kelompokkan per perspektif
         $grouped = [];
@@ -378,7 +380,7 @@ class LaporanController extends BaseController
 
         $detail = $this->penilaianModel->db->table('penilaian p')
             ->select('p.*, k.nama_kpi, k.kode, k.satuan,
-                      k.polarity, k.perspektif, kp.bobot')
+                      k.polarity, k.perspektif, kp.id as kpi_pegawai_id')
             ->join('kpi_unit k', 'k.id = p.kpi_id')
             ->join('kpi_pegawai kp',
                    'kp.kpi_id = p.kpi_id AND kp.pegawai_id = p.pegawai_id')
@@ -386,6 +388,7 @@ class LaporanController extends BaseController
             ->where('p.periode_id', $periodeId)
             ->orderBy('k.perspektif', 'ASC')
             ->get()->getResultArray();
+        $this->resolveBobotUntukDetail($detail, $periode);
 
         $spreadsheet = new Spreadsheet();
         $sheet = $spreadsheet->getActiveSheet();
@@ -549,5 +552,28 @@ class LaporanController extends BaseController
         }
 
         $sheet->getStyle($cell)->applyFromArray($s);
+    }
+
+    /**
+     * Isi ulang 'bobot' pada setiap baris $detail dari Master Target (Bobot
+     * Tahunan) untuk tahun Periode yang bersangkutan — kolom legacy
+     * kpi_pegawai.bobot sudah tidak lagi dikelola sejak Bobot dipindah
+     * sepenuhnya ke menu "Master Target", jadi tidak boleh lagi dipakai
+     * sebagai sumber tampilan laporan.
+     */
+    private function resolveBobotUntukDetail(array &$detail, ?array $periode): void
+    {
+        if (empty($detail) || !$periode) {
+            return;
+        }
+
+        $tahun = (int)date('Y', strtotime($periode['tgl_mulai']));
+        $kpiPegawaiIds = array_values(array_unique(array_filter(array_column($detail, 'kpi_pegawai_id'))));
+        $bobotIndexed = (new KpiPegawaiBobotTahunanModel())->getIndexedByRefAndTahun($kpiPegawaiIds, $tahun);
+
+        foreach ($detail as &$row) {
+            $row['bobot'] = $bobotIndexed[$row['kpi_pegawai_id']] ?? 0;
+        }
+        unset($row);
     }
 }

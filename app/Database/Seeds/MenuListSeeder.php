@@ -29,9 +29,10 @@ class MenuListSeeder extends Seeder
             ['kode_menu'=>'master_unitkerja', 'nama_menu'=>'Data Unit Kerja',       'grup'=>'Master Data', 'urutan'=>2],
             ['kode_menu'=>'master_kpidivisi', 'nama_menu'=>'KPI per Divisi',       'grup'=>'Master Data', 'urutan'=>3],
             ['kode_menu'=>'kpi_pegawai',      'nama_menu'=>'KPI Per Pegawai',     'grup'=>'Master Data', 'urutan'=>4],
-            ['kode_menu'=>'pegawai',          'nama_menu'=>'Data Pegawai',        'grup'=>'Master Data', 'urutan'=>5],
-            ['kode_menu'=>'master_periode',   'nama_menu'=>'Periode',             'grup'=>'Master Data', 'urutan'=>6],
-            ['kode_menu'=>'master_users',     'nama_menu'=>'Manajemen User',      'grup'=>'Master Data', 'urutan'=>7],
+            ['kode_menu'=>'master_target',    'nama_menu'=>'Master Target',       'grup'=>'Master Data', 'urutan'=>5],
+            ['kode_menu'=>'pegawai',          'nama_menu'=>'Data Pegawai',        'grup'=>'Master Data', 'urutan'=>6],
+            ['kode_menu'=>'master_periode',   'nama_menu'=>'Periode',             'grup'=>'Master Data', 'urutan'=>7],
+            ['kode_menu'=>'master_users',     'nama_menu'=>'Manajemen User',      'grup'=>'Master Data', 'urutan'=>8],
 
             // Laporan
             ['kode_menu'=>'laporan_pdf',   'nama_menu'=>'Export PDF',    'grup'=>'Laporan', 'urutan'=>1],

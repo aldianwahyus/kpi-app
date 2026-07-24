@@ -53,6 +53,7 @@
             <th style="width:40px">#</th>
             <th>Nama Periode</th>
             <th style="width:100px">Kode</th>
+            <th style="width:90px">Jenis</th>
             <th style="width:120px">Tanggal Mulai</th>
             <th style="width:120px">Tanggal Selesai</th>
             <th style="width:80px" class="text-center">Durasi</th>
@@ -63,7 +64,7 @@
         <tbody>
           <?php if (empty($periodes)): ?>
           <tr>
-            <td colspan="8" class="text-center py-4 text-muted">
+            <td colspan="9" class="text-center py-4 text-muted">
               <i class="ti ti-calendar-off d-block fs-2 mb-1"></i>
               Belum ada periode. Buat periode pertama!
             </td>
@@ -90,6 +91,7 @@
                 <?= esc($p['kode']) ?>
               </code>
             </td>
+            <td class="text-capitalize"><?= esc($p['jenis'] ?? 'bulanan') ?></td>
             <td><?= date('d M Y', strtotime($p['tgl_mulai'])) ?></td>
             <td><?= date('d M Y', strtotime($p['tgl_selesai'])) ?></td>
             <td class="text-center text-muted"><?= $durasi ?> hari</td>

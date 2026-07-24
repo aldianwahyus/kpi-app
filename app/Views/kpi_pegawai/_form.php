@@ -11,21 +11,28 @@
       <?= esc($pegawai['jabatan'] ?? '') ?>
     </small>
   </div>
+  <a href="<?= base_url("master-target/edit/{$pegawai['id']}") ?>" class="btn btn-sm btn-outline-primary">
+    <i class="ti ti-target-arrow me-1"></i> Master Target
+  </a>
 </div>
 
-<!-- Total bobot indicator -->
-<?php $bobot_pct = round($totalBobot * 100, 2); ?>
-<div class="alert py-2 mb-3 d-flex align-items-center gap-2"
-     id="alert-bobot"
-     style="background:<?= $bobot_pct==100?'#E2EFDA':'#FCE4D6' ?>;
-            border:1px solid <?= $bobot_pct==100?'#70AD47':'#C00000' ?>">
-  <i class="ti ti-calculator"></i>
-  <span style="font-size:13px">
-    Total bobot KPI pegawai ini:
-    <strong id="total-bobot-display"><?= $bobot_pct ?>%</strong>
-    <?= $bobot_pct==100 ? '— ✓ Sudah tepat 100%' : '— Harus tepat 100%!' ?>
+<div class="alert py-2 mb-3 d-flex align-items-center gap-2" style="background:#E6F1FB;border:1px solid #2E75B6;font-size:12px">
+  <i class="ti ti-info-circle" style="color:#1F4E79"></i>
+  <span style="color:#1F4E79">
+    Layar ini hanya untuk memilih parameter KPI pegawai. Bobot & Target diisi di menu
+    <strong>"Master Target"</strong> di atas.
   </span>
 </div>
+
+<?php if ($periodeAktif): ?>
+<div class="alert py-2 mb-3 d-flex align-items-center gap-2" style="background:#EAF3DE;border:1px solid #70AD47;font-size:12px">
+  <i class="ti ti-calendar-check" style="color:#375623"></i>
+  <span style="color:#375623">
+    Periode Aktif: <strong><?= esc($periodeAktif['nama']) ?></strong> — kolom Bobot Penilaian &
+    Target di bawah menampilkan nilai efektif (read-only) untuk periode ini.
+  </span>
+</div>
+<?php endif; ?>
 
 <div class="row g-3">
 
@@ -61,7 +68,7 @@
           </div>
         <?php else: ?>
 
-        <form action="<?= base_url("kpi-pegawai/save-bobot/{$pegawai['id']}") ?>"
+        <form action="<?= base_url("kpi-pegawai/save-deskripsi/{$pegawai['id']}") ?>"
               method="post">
           <?= csrf_field() ?>
 
@@ -88,11 +95,9 @@
           <?php
             $turunanList = $turunanByInduk[$kpi['id']] ?? [];
             $punyaTurunan = !empty($turunanList);
-            $totalBobotTurunan = array_sum(array_column($turunanList, 'bobot'));
-            $sisaBobotTurunan  = max(0, round((float)$kpi['bobot'] - $totalBobotTurunan, 4));
+            $previewInduk = $previewIndukById[$kpi['id']] ?? null;
           ?>
-          <div class="border-bottom" data-induk-id="<?= $kpi['id'] ?>"
-               data-bobot-induk="<?= (float)$kpi['bobot'] ?>">
+          <div class="border-bottom" data-induk-id="<?= $kpi['id'] ?>">
             <div class="px-3 py-2">
               <input type="hidden" name="kp_id[]"  value="<?= $kpi['id'] ?>">
 
@@ -128,81 +133,20 @@
                     </span>
                   <?php endif; ?>
                 </div>
+                <?php if ($periodeAktif && !$punyaTurunan): ?>
+                <div class="mt-1" style="font-size:11px">
+                  <span class="badge bg-light text-dark border">
+                    Bobot Penilaian: <?= $previewInduk && $previewInduk['bobot'] !== null ? round($previewInduk['bobot'] * 100, 2) . '%' : 'belum di-setup' ?>
+                  </span>
+                  <span class="badge bg-light text-dark border">
+                    Target: <?= $previewInduk && ($previewInduk['target'] !== null || $kpi['polarity'] === 'special') ? ($kpi['polarity'] === 'special' ? '—' : number_format($previewInduk['target'], 2)) : 'belum di-setup' ?>
+                  </span>
+                </div>
+                <?php endif; ?>
               </div>
 
-              <!-- Baris 2: kontrol Target, Bobot, dan tombol aksi —
-                   dipisah ke baris sendiri (bukan satu baris flex padat
-                   dengan nama KPI) agar tidak berdesakan/terpotong pada
-                   lebar kolom yang tersedia. -->
+              <!-- Baris 2: tombol aksi -->
               <div class="d-flex align-items-center gap-2 flex-wrap">
-                <?php $kpiPolarityTarget = $kpi['polarity'] ?? 'max'; ?>
-                <!-- Input Target — pagu/plafon yang ditentukan manual oleh
-                     Admin. Begitu memiliki Parameter Turunan, field ini
-                     terkunci (readonly) agar tidak diubah sembarangan tanpa
-                     menyesuaikan Turunannya — perilakunya sama persis
-                     dengan field Bobot di sebelahnya. Untuk 'special',
-                     Target tidak dipakai sama sekali oleh perhitungan
-                     (penilaian bersifat Ada/Tidak Ada) sehingga dikunci
-                     agar tidak menyesatkan Admin mengisi angka yang tak
-                     bermakna — tetap harus tampil (bukan disabled/hilang)
-                     supaya urutan index array target[] tidak bergeser
-                     dari kp_id[]/bobot[] saat disimpan. -->
-                <div style="width:130px">
-                  <div class="input-group input-group-sm">
-                    <span class="input-group-text bg-light text-muted" style="font-size:10px; padding: 2px 5px;">
-                      <?= $kpiPolarityTarget === 'tertimbang' ? 'Trg Akhir' : 'Trg' ?>
-                    </span>
-                    <input type="number"
-                           name="target[]"
-                           class="form-control text-center"
-                           value="<?= $kpiPolarityTarget === 'special' ? '' : esc($kpi['target'] ?? '100.00') ?>"
-                           step="any" min="0"
-                           placeholder="<?= $kpiPolarityTarget === 'special' ? '-' : '100' ?>"
-                           <?= $kpiPolarityTarget === 'special' ? '' : 'required' ?>
-                           <?= ($punyaTurunan || $kpiPolarityTarget === 'special') ? 'readonly style="background:#f8f9fa;cursor:not-allowed"' : '' ?>
-                           title="<?= $kpiPolarityTarget === 'special'
-                                        ? 'Tidak digunakan untuk Special Scoring (penilaian Ada/Tidak Ada)'
-                                        : ($punyaTurunan ? 'Tidak dapat diubah karena sudah memiliki Parameter Turunan' : '') ?>">
-                  </div>
-                  <?php if ($kpiPolarityTarget === 'special'): ?>
-                    <div class="form-text" style="font-size:9px;color:#888">Tidak diperlukan (Special Scoring)</div>
-                  <?php elseif ($kpiPolarityTarget === 'tertimbang'): ?>
-                    <div class="form-text" style="font-size:9px;color:#888">
-                      Untuk Indikator 1. Indikator 2 (Harian) diisi % langsung saat penilaian.
-                    </div>
-                  <?php endif; ?>
-                </div>
-
-
-                <!-- Input bobot — readonly apabila sudah memiliki Turunan,
-                     karena Bobot Turunan adalah pecahan dari Bobot Induk ini -->
-                <div style="width:130px">
-                  <div class="input-group input-group-sm">
-                    <input type="number"
-                           name="bobot[]"
-                           class="form-control bobot-input text-center"
-                           value="<?= $kpi['bobot'] ?>"
-                           step="0.001" min="0" max="1"
-                           placeholder="0.10" required
-                           <?= $punyaTurunan ? 'readonly style="background:#f8f9fa;cursor:not-allowed"' : '' ?>
-                           title="<?= $punyaTurunan ? 'Tidak dapat diubah karena sudah memiliki Parameter Turunan' : '' ?>">
-                    <span class="input-group-text b-input-pct" style="font-size:11px; padding: 2px 6px;">
-                      <?= round($kpi['bobot']*100, 1) ?>%
-                    </span>
-                  </div>
-                </div>
-
-                <!-- Tambah Parameter Turunan -->
-                <?php if ((float)$kpi['bobot'] <= 0): ?>
-                <button type="button"
-                        class="btn btn-outline-secondary btn-sm"
-                        style="padding:3px 10px;font-size:11px;white-space:nowrap;opacity:0.6"
-                        disabled
-                        title="Isi dan simpan Bobot KPI Induk terlebih dahulu sebelum menambah Parameter Turunan">
-                  <i class="ti ti-list-tree" style="font-size:13px"></i> Tambah Parameter
-                  <i class="ti ti-alert-circle text-warning ms-1" style="font-size:11px"></i>
-                </button>
-                <?php else: ?>
                 <button type="button"
                         class="btn btn-outline-primary btn-sm"
                         style="padding:3px 10px;font-size:11px;white-space:nowrap"
@@ -210,7 +154,6 @@
                         data-bs-target="#modalTambahTurunan<?= $kpi['id'] ?>">
                   <i class="ti ti-list-tree" style="font-size:13px"></i> Tambah Parameter
                 </button>
-                <?php endif; ?>
 
                 <!-- Hapus -->
                 <a href="<?= base_url("kpi-pegawai/delete/{$kpi['id']}") ?>"
@@ -221,9 +164,7 @@
                 </a>
               </div>
 
-              <!-- Deskripsi Target — panduan pengisian Realisasi untuk Drafter/Approver.
-                   Input ini menggunakan array index yang sama dengan kp_id[], bobot[],
-                   dan target[] sehingga saveBobot() bisa memetakannya per-KPI dengan benar. -->
+              <!-- Deskripsi Target — panduan pengisian Realisasi untuk Drafter/Approver. -->
               <div class="pb-2 mt-1">
                 <div class="input-group input-group-sm">
                   <span class="input-group-text bg-light text-muted"
@@ -248,21 +189,26 @@
                 <thead>
                   <tr style="color:#888">
                     <th style="font-weight:500;border-bottom:1px solid #e5e7eb">Parameter Turunan</th>
+                    <?php if ($periodeAktif): ?>
                     <th style="font-weight:500;width:110px;border-bottom:1px solid #e5e7eb" class="text-center">Target</th>
                     <th style="font-weight:500;width:110px;border-bottom:1px solid #e5e7eb" class="text-center">Bobot</th>
+                    <?php endif; ?>
                     <th style="width:70px;border-bottom:1px solid #e5e7eb"></th>
                   </tr>
                 </thead>
                 <tbody>
                   <?php foreach ($turunanList as $t): ?>
+                  <?php $previewT = $previewTurunanById[$t['id']] ?? null; ?>
                   <tr>
                     <td style="border-bottom:1px solid #f0f0f0"><i class="ti ti-corner-down-right me-1" style="color:#aaa"></i><?= esc($t['nama_turunan']) ?></td>
+                    <?php if ($periodeAktif): ?>
                     <td class="text-center" style="border-bottom:1px solid #f0f0f0">
-                      <?= ($t['polarity'] ?? 'max') === 'special' ? '—' : number_format((float)$t['target'], 2) ?>
+                      <?= ($t['polarity'] ?? 'max') === 'special' ? '—' : ($previewT && $previewT['target'] !== null ? number_format((float)$previewT['target'], 2) : '—') ?>
                     </td>
                     <td class="text-center" style="border-bottom:1px solid #f0f0f0">
-                      <?= round((float)$t['bobot']*100, 2) ?>%
+                      <?= $previewT && $previewT['bobot'] !== null ? round((float)$previewT['bobot']*100, 2) . '%' : '—' ?>
                     </td>
+                    <?php endif; ?>
                     <td class="text-center" style="border-bottom:1px solid #f0f0f0">
                       <div class="d-flex gap-1 justify-content-center">
                         <button type="button"
@@ -282,27 +228,6 @@
                     </td>
                   </tr>
                   <?php endforeach; ?>
-                  <tr style="background:#F0F4F8">
-                    <td class="fw-semibold" style="border:none">Total Turunan</td>
-                    <td class="text-center fw-semibold" style="border:none">
-                      <?= number_format(array_sum(array_column($turunanList,'target')), 2) ?>
-                      <?php $sisaTargetTurunan = max(0, round((float)$kpi['target'] - array_sum(array_column($turunanList,'target')), 2)); ?>
-                      <?php if ($sisaTargetTurunan > 0): ?>
-                        <span class="text-warning" style="font-size:10px">
-                          (sisa <?= number_format($sisaTargetTurunan, 2) ?>)
-                        </span>
-                      <?php endif; ?>
-                    </td>
-                    <td class="text-center fw-semibold" style="border:none">
-                      <?= round($totalBobotTurunan * 100, 2) ?>%
-                      <?php if ($sisaBobotTurunan > 0): ?>
-                        <span class="text-warning" style="font-size:10px">
-                          (sisa <?= round($sisaBobotTurunan * 100, 2) ?>%)
-                        </span>
-                      <?php endif; ?>
-                    </td>
-                    <td style="border:none"></td>
-                  </tr>
                 </tbody>
               </table>
             </div>
@@ -314,22 +239,18 @@
           <div class="p-3">
             <button type="submit" class="btn btn-primary btn-sm px-4">
               <i class="ti ti-device-floppy me-1"></i>
-              Simpan Konfigurasi KPI
+              Simpan Deskripsi Target
             </button>
           </div>
         </form>
 
         <!-- Modal Tambah Parameter Turunan — ditempatkan DI LUAR form
-             "save-bobot" di atas (yang ditutup tepat sebelum baris ini)
+             "save-deskripsi" di atas (yang ditutup tepat sebelum baris ini)
              agar tidak terjadi <form> bersarang di dalam <form>, sesuai
              pola yang sudah diperbaiki sebelumnya pada draft_ulang/_content.php. -->
         <?php foreach ($assignedGrouped as $perspektif => $kpis): ?>
         <?php foreach ($kpis as $kpi): ?>
-        <?php
-          $turunanListModal = $turunanByInduk[$kpi['id']] ?? [];
-          $totalBobotTurunanModal = array_sum(array_column($turunanListModal, 'bobot'));
-          $sisaBobotTurunanModal  = max(0, round((float)$kpi['bobot'] - $totalBobotTurunanModal, 4));
-        ?>
+        <?php $turunanListModal = $turunanByInduk[$kpi['id']] ?? []; ?>
         <div class="modal fade" id="modalTambahTurunan<?= $kpi['id'] ?>" tabindex="-1">
           <div class="modal-dialog">
             <div class="modal-content">
@@ -343,11 +264,8 @@
               <form action="<?= base_url("kpi-pegawai/turunan/add/{$kpi['id']}") ?>" method="post">
                 <?= csrf_field() ?>
                 <div class="modal-body">
-                  <div class="alert py-2 mb-3" style="font-size:12px;background:#E6F1FB;border:1px solid #2E75B6;color:#1F4E79">
-                    Bobot Parameter Induk: <strong><?= round((float)$kpi['bobot']*100, 2) ?>%</strong>.
-                    Sisa bobot tersedia:
-                    <strong id="sisaBobotInfo<?= $kpi['id'] ?>"><?= round($sisaBobotTurunanModal * 100, 2) ?>%</strong>.
-                    <br><span style="font-size:11px">Target setiap Turunan bersifat independen — bebas diisi sesuai satuan masing-masing.</span>
+                  <div class="alert py-2 mb-3" style="font-size:11px;background:#E6F1FB;border:1px solid #2E75B6;color:#1F4E79">
+                    Bobot & Target Parameter Turunan diisi di menu "Master Target" setelah Parameter ini dibuat.
                   </div>
                   <div class="mb-2">
                     <label class="form-label fw-semibold small">
@@ -363,15 +281,7 @@
                     <div class="form-text" style="font-size:10px">Panduan pengisian Realisasi untuk Drafter</div>
                   </div>
                   <div class="row g-2 mb-2">
-                    <div class="col-6">
-                      <label class="form-label fw-semibold small turunan-target-label">
-                        Target <span class="text-danger turunan-target-required">*</span>
-                      </label>
-                      <input type="number" name="target" class="form-control form-control-sm turunan-target-input"
-                             step="any" min="0" placeholder="100" required>
-                      <div class="form-text turunan-target-hint" style="font-size:10px">Bebas — sesuai satuan Turunan ini</div>
-                    </div>
-                    <div class="col-6">
+                    <div class="col-12">
                       <label class="form-label fw-semibold small">
                         Satuan
                       </label>
@@ -437,20 +347,6 @@
                       Skor Akhir = Skor Indikator (Realisasi/Target) × Pengkali (dari persentase Rata-rata Harian saat penilaian). Tidak ada konfigurasi tambahan di sini.
                     </div>
                   </div>
-                  <div class="row g-2">
-                    <div class="col-6">
-                      <label class="form-label fw-semibold small">
-                        Bobot (desimal) <span class="text-danger">*</span>
-                      </label>
-                      <input type="number" name="bobot" class="form-control form-control-sm bobot-turunan-input"
-                             data-sisa-pagu="<?= $sisaBobotTurunanModal ?>"
-                             step="0.001" min="0" max="<?= $sisaBobotTurunanModal ?>"
-                             placeholder="0.10" required>
-                      <div class="form-text peringatan-pagu" style="font-size:10px">
-                        Maksimal <?= round($sisaBobotTurunanModal, 4) ?> (<?= round($sisaBobotTurunanModal*100, 2) ?>%)
-                      </div>
-                    </div>
-                  </div>
                 </div>
                 <div class="modal-footer">
                   <button type="button" class="btn btn-light btn-sm" data-bs-dismiss="modal">Batal</button>
@@ -465,10 +361,6 @@
 
         <!-- Modal Edit untuk setiap Parameter Turunan yang sudah ada -->
         <?php foreach ($turunanListModal as $t): ?>
-        <?php
-          $totalBobotLainModal  = $totalBobotTurunanModal - (float)$t['bobot'];
-          $sisaBobotEditModal   = max(0, round((float)$kpi['bobot'] - $totalBobotLainModal, 4));
-        ?>
         <div class="modal fade" id="modalEditTurunan<?= $t['id'] ?>" tabindex="-1">
           <div class="modal-dialog">
             <div class="modal-content">
@@ -482,9 +374,8 @@
               <form action="<?= base_url("kpi-pegawai/turunan/update/{$t['id']}") ?>" method="post">
                 <?= csrf_field() ?>
                 <div class="modal-body">
-                  <div class="alert py-2 mb-3" style="font-size:12px;background:#E6F1FB;border:1px solid #2E75B6;color:#1F4E79">
-                    Bobot maksimal: <strong><?= round($sisaBobotEditModal * 100, 2) ?>%</strong>.
-                    <br><span style="font-size:11px">Target bersifat independen — bebas diisi sesuai satuan Turunan ini.</span>
+                  <div class="alert py-2 mb-3" style="font-size:11px;background:#E6F1FB;border:1px solid #2E75B6;color:#1F4E79">
+                    Bobot & Target diatur di menu "Master Target", bukan di sini.
                   </div>
                   <div class="mb-2">
                     <label class="form-label fw-semibold small">
@@ -501,16 +392,7 @@
                     <div class="form-text" style="font-size:10px">Panduan pengisian Realisasi untuk Drafter</div>
                   </div>
                   <div class="row g-2 mb-2">
-                    <div class="col-6">
-                      <label class="form-label fw-semibold small turunan-target-label">
-                        Target <span class="text-danger turunan-target-required">*</span>
-                      </label>
-                      <input type="number" name="target" class="form-control form-control-sm turunan-target-input"
-                             value="<?= esc($t['polarity'] === 'special' ? '' : $t['target']) ?>"
-                             step="any" min="0" <?= $t['polarity'] === 'special' ? '' : 'required' ?>>
-                      <div class="form-text turunan-target-hint" style="font-size:10px">Bebas — sesuai satuan Turunan ini</div>
-                    </div>
-                    <div class="col-6">
+                    <div class="col-12">
                       <label class="form-label fw-semibold small">Satuan</label>
                       <input type="text" name="satuan" class="form-control form-control-sm"
                              value="<?= esc($t['satuan'] ?? '') ?>"
@@ -576,20 +458,6 @@
                   <div class="mb-2 polarity-field" data-for="tertimbang">
                     <div class="alert py-2 mb-0" style="font-size:10px;background:#E6F1FB;border:1px solid #2E75B6;color:#1F4E79">
                       Skor Akhir = Skor Indikator (Realisasi/Target) × Pengkali (dari persentase Rata-rata Harian saat penilaian). Tidak ada konfigurasi tambahan di sini.
-                    </div>
-                  </div>
-                  <div class="row g-2">
-                    <div class="col-6">
-                      <label class="form-label fw-semibold small">
-                        Bobot (desimal) <span class="text-danger">*</span>
-                      </label>
-                      <input type="number" name="bobot" class="form-control form-control-sm bobot-turunan-input"
-                             data-sisa-pagu="<?= $sisaBobotEditModal ?>"
-                             value="<?= esc($t['bobot']) ?>"
-                             step="0.001" min="0" max="<?= $sisaBobotEditModal ?>" required>
-                      <div class="form-text peringatan-pagu" style="font-size:10px">
-                        Maksimal <?= round($sisaBobotEditModal, 4) ?> (<?= round($sisaBobotEditModal*100, 2) ?>%)
-                      </div>
                     </div>
                   </div>
                 </div>
@@ -713,6 +581,8 @@
             <i class="ti ti-alert-triangle me-1"></i>
             Fitur ini akan <strong>mengganti semua KPI</strong>
             pegawai ini dengan KPI dari pegawai yang dipilih.
+            Bobot & Target di Master Target <strong>tidak ikut disalin</strong> —
+            lengkapi lagi di menu Master Target setelah menyalin.
           </div>
           <label class="form-label fw-semibold small">
             Pilih Pegawai Sumber
@@ -790,69 +660,10 @@ document.getElementById('search-kpi').addEventListener('input', function() {
     });
 });
 
-// Hitung total bobot real-time & update badge persentase per baris
-document.querySelectorAll('.bobot-input').forEach(input => {
-    input.addEventListener('input', function() {
-        const val = parseFloat(this.value) || 0;
-        const pctSpan = this.closest('.input-group').querySelector('.b-input-pct');
-        if (pctSpan) {
-            pctSpan.textContent = (val * 100).toFixed(1) + '%';
-        }
-        hitungTotalBobot();
-    });
-});
-
-function hitungTotalBobot() {
-    let total = 0;
-    document.querySelectorAll('.bobot-input').forEach(i => {
-        total += parseFloat(i.value) || 0;
-    });
-    const pct = Math.round(total * 10000) / 100;
-    document.getElementById('total-bobot-display').textContent = pct + '%';
-    const alert = document.getElementById('alert-bobot');
-    if (pct === 100) {
-        alert.style.background   = '#E2EFDA';
-        alert.style.borderColor  = '#70AD47';
-    } else {
-        alert.style.background   = '#FCE4D6';
-        alert.style.borderColor  = '#C00000';
-    }
-}
-
-// Validasi real-time pada input Target dan Bobot di setiap modal Tambah
-// Parameter maupun Edit Parameter — memberi peringatan visual langsung
-// apabila nilai yang diketik melebihi sisa pagu yang tersedia (atribut
-// max sudah diisi sesuai sisa pagu dari sisi server; validasi di sini
-// murni untuk umpan balik visual sebelum pengguna menekan tombol Simpan).
-document.querySelectorAll('.target-turunan-input, .bobot-turunan-input').forEach(function (input) {
-    const peringatanEl = input.closest('.col-6')?.querySelector('.peringatan-pagu');
-    const teksAsli      = peringatanEl ? peringatanEl.textContent : '';
-
-    input.addEventListener('input', function () {
-        const maxVal = parseFloat(this.getAttribute('data-sisa-pagu')) || 0;
-        const val    = parseFloat(this.value) || 0;
-
-        if (val > maxVal) {
-            this.classList.add('is-invalid');
-            if (peringatanEl) {
-                peringatanEl.textContent = 'Melebihi sisa pagu Parameter Induk!';
-                peringatanEl.classList.add('text-danger');
-                peringatanEl.classList.remove('text-muted');
-            }
-        } else {
-            this.classList.remove('is-invalid');
-            if (peringatanEl) {
-                peringatanEl.textContent = teksAsli;
-                peringatanEl.classList.remove('text-danger');
-            }
-        }
-    });
-});
-
 // Tampilkan/sembunyikan field tambahan (Perubahan Polarity / Toleransi
-// Precise / Sifat Special / Target Harian Tertimbang) sesuai Polarity yang
-// dipilih pada tiap modal Tambah/Edit Parameter Turunan — di-scope per
-// modal (.modal-content) karena ada satu select serupa per KPI Induk.
+// Precise / Sifat Special) sesuai Polarity yang dipilih pada tiap modal
+// Tambah/Edit Parameter Turunan — di-scope per modal (.modal-content)
+// karena ada satu select serupa per KPI Induk.
 document.querySelectorAll('.sel-polarity-turunan').forEach(function (sel) {
     const modalContent = sel.closest('.modal-content');
     if (!modalContent) return;
@@ -867,23 +678,6 @@ document.querySelectorAll('.sel-polarity-turunan').forEach(function (sel) {
                 field.disabled = !active;
             });
         });
-
-        // Target tidak dipakai sama sekali untuk 'special' (penilaian
-        // Ada/Tidak Ada, bukan dibandingkan ke angka) — jadikan opsional
-        // dan kosongkan, alih-alih memaksa Admin mengisi angka yang tak
-        // bermakna. Untuk polarity lain, tetap wajib seperti semula.
-        const targetInput = modalContent.querySelector('.turunan-target-input');
-        const targetHint  = modalContent.querySelector('.turunan-target-hint');
-        const targetReq   = modalContent.querySelector('.turunan-target-required');
-        if (targetInput) {
-            const isSpecial = polarity === 'special';
-            targetInput.required = !isSpecial;
-            if (isSpecial) targetInput.value = '';
-            if (targetReq)  targetReq.style.display = isSpecial ? 'none' : '';
-            if (targetHint) targetHint.textContent = isSpecial
-                ? 'Tidak diperlukan (Special Scoring)'
-                : 'Bebas — sesuai satuan Turunan ini';
-        }
     }
 
     sel.addEventListener('change', toggleTurunanFields);

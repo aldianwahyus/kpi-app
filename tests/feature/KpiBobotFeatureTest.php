@@ -2,6 +2,7 @@
 
 use App\Models\KpiDivisiModel;
 use App\Models\KpiPegawaiModel;
+use App\Models\KpiPegawaiTurunanModel;
 use App\Models\UserModel;
 use Tests\Support\KpiTestCase;
 
@@ -46,46 +47,30 @@ final class KpiBobotFeatureTest extends KpiTestCase
         $this->assertSame(1, (new KpiDivisiModel())->where('divisi_id', $divisiId)->countAllResults());
     }
 
-    public function testSaveBobotKpiPegawaiDitolakJikaTotalBukan100Persen(): void
+    // ── Regresi: Bobot & Target TIDAK LAGI dikelola di KPI Per Pegawai —
+    // sudah dipindah sepenuhnya ke menu "Master Target". Layar KPI Per
+    // Pegawai kini murni assignment; satu-satunya yang masih bisa disimpan
+    // dari sana adalah Deskripsi Target (teks panduan pengisian Realisasi).
+
+    public function testSaveDeskripsiMenyimpanTeksTanpaMenyentuhBobotAtauTarget(): void
     {
         $direktoratId = $this->makeDirektorat();
         $divisiId     = $this->makeDivisi($direktoratId, 'DVA');
-        $pegawaiId    = $this->makePegawai($divisiId, 'Pegawai Satu');
+        $pegawaiId    = $this->makePegawai($divisiId, 'Pegawai Deskripsi');
         $kpiUnitId    = $this->makeKpiUnit($direktoratId, 'TK-F1');
-        $kpId         = $this->makeKpiPegawai($pegawaiId, $divisiId, $kpiUnitId, 0.3);
-
-        $_SERVER['HTTP_REFERER'] = site_url("kpi-pegawai/edit/{$pegawaiId}");
-
-        // Kirim bobot BERBEDA dari nilai awal (0.3 -> 0.5), tapi totalnya
-        // tetap bukan 100% -> harus ditolak dan nilai lama TIDAK berubah.
-        $result = $this->withSession($this->sessionFor('admin', 1))
-            ->post("kpi-pegawai/save-bobot/{$pegawaiId}", [
-                'kp_id'  => [$kpId],
-                'bobot'  => [0.5],
-                'target' => [100],
-            ]);
-
-        $result->assertRedirect();
-        $this->assertEqualsWithDelta(0.3, (new KpiPegawaiModel())->find($kpId)['bobot'], 0.0001);
-    }
-
-    public function testSaveBobotKpiPegawaiBerhasilJikaTotalTepat100Persen(): void
-    {
-        $direktoratId = $this->makeDirektorat();
-        $divisiId     = $this->makeDivisi($direktoratId, 'DVA');
-        $pegawaiId    = $this->makePegawai($divisiId, 'Pegawai Satu');
-        $kpiUnitId    = $this->makeKpiUnit($direktoratId, 'TK-F1');
-        $kpId         = $this->makeKpiPegawai($pegawaiId, $divisiId, $kpiUnitId, 0.3);
+        $kpId         = $this->makeKpiPegawai($pegawaiId, $divisiId, $kpiUnitId, 0.3, 100);
 
         $result = $this->withSession($this->sessionFor('admin', 1))
-            ->post("kpi-pegawai/save-bobot/{$pegawaiId}", [
-                'kp_id'  => [$kpId],
-                'bobot'  => [1.0],
-                'target' => [100],
+            ->post("kpi-pegawai/save-deskripsi/{$pegawaiId}", [
+                'kp_id'            => [$kpId],
+                'deskripsi_target' => ['Minimal 80 nasabah baru'],
             ]);
 
         $this->assertRedirectEndsWith($result, "kpi-pegawai/edit/{$pegawaiId}");
-        $this->assertEqualsWithDelta(1.0, (new KpiPegawaiModel())->find($kpId)['bobot'], 0.0001);
+        $row = (new KpiPegawaiModel())->find($kpId);
+        $this->assertSame('Minimal 80 nasabah baru', $row['deskripsi_target']);
+        $this->assertEqualsWithDelta(0.3, (float)$row['bobot'], 0.0001, 'Bobot (kolom legacy) tidak boleh ikut berubah.');
+        $this->assertEqualsWithDelta(100.0, (float)$row['target'], 0.0001, 'Target (kolom legacy) tidak boleh ikut berubah.');
     }
 
     // ── Regresi: hanya Admin yang boleh kelola KPI Per Pegawai ──
@@ -202,52 +187,29 @@ final class KpiBobotFeatureTest extends KpiTestCase
         $this->assertEqualsWithDelta(100.0, (float)$row['target'], 0.001);
     }
 
-    // ── Regresi: Parameter Turunan ber-polarity 'special' tidak boleh
-    // diwajibkan Target > 0 (Target tidak dipakai sama sekali oleh
-    // hitungSkorSpecial()) — beda dari polarity lain yang tetap mewajibkannya.
+    // ── Regresi: Bobot & Target TIDAK LAGI divalidasi/diisi saat membuat
+    // Parameter Turunan (addTurunan()) — untuk polarity APA PUN. Keduanya
+    // kini sepenuhnya dikelola di menu "Master Target" setelah Turunan dibuat.
 
-    public function testAddTurunanSpecialBerhasilWalauTargetNol(): void
+    public function testAddTurunanBerhasilUntukSemuaPolarityTanpaBobotAtauTarget(): void
     {
         $direktoratId = $this->makeDirektorat();
         $divisiId     = $this->makeDivisi($direktoratId, 'DVA');
-        $pegawaiId    = $this->makePegawai($divisiId, 'Pegawai Turunan Special');
-        $kpiUnitId    = $this->makeKpiUnit($direktoratId, 'TK-ST3', 'max', 100);
-        $kpId         = $this->makeKpiPegawai($pegawaiId, $divisiId, $kpiUnitId, 1.0000, 100);
-
-        $this->withSession($this->sessionFor('admin', 1))
-            ->post("kpi-pegawai/turunan/add/{$kpId}", [
-                'nama_turunan' => 'Sub Special',
-                'bobot'        => 1.0,
-                'target'       => 0,
-                'polarity'     => 'special',
-                'sifat_khusus' => 'maximize',
-            ]);
-
-        $turunan = (new \App\Models\KpiPegawaiTurunanModel())->where('kpi_pegawai_id', $kpId)->first();
-        $this->assertNotNull($turunan, 'Turunan special harus tetap tersimpan walau Target=0.');
-        $this->assertSame('special', $turunan['polarity']);
-    }
-
-    public function testAddTurunanMaxDitolakJikaTargetNol(): void
-    {
-        $direktoratId = $this->makeDirektorat();
-        $divisiId     = $this->makeDivisi($direktoratId, 'DVA');
-        $pegawaiId    = $this->makePegawai($divisiId, 'Pegawai Turunan Max');
+        $pegawaiId    = $this->makePegawai($divisiId, 'Pegawai Turunan Bobot Target Diabaikan');
         $kpiUnitId    = $this->makeKpiUnit($direktoratId, 'TK-ST4', 'max', 100);
         $kpId         = $this->makeKpiPegawai($pegawaiId, $divisiId, $kpiUnitId, 1.0000, 100);
 
         $this->withSession($this->sessionFor('admin', 1))
             ->post("kpi-pegawai/turunan/add/{$kpId}", [
                 'nama_turunan' => 'Sub Max',
-                'bobot'        => 1.0,
-                'target'       => 0,
                 'polarity'     => 'max',
             ]);
 
-        $this->assertSame(
-            0,
-            (new \App\Models\KpiPegawaiTurunanModel())->where('kpi_pegawai_id', $kpId)->countAllResults(),
-            'Turunan max/min/precise/tertimbang tetap harus mewajibkan Target > 0.'
+        $turunan = (new KpiPegawaiTurunanModel())->where('kpi_pegawai_id', $kpId)->first();
+        $this->assertNotNull(
+            $turunan,
+            'Turunan harus tetap tersimpan walau Bobot/Target tidak dikirim — keduanya dikelola di Master Target.'
         );
+        $this->assertSame('max', $turunan['polarity']);
     }
 }
