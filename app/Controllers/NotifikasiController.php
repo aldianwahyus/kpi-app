@@ -60,7 +60,7 @@ class NotifikasiController extends BaseController
 
     public function sendReminder(int $userId)
     {
-        $check = $this->checkMenuAccess('notifikasi');
+        $check = $this->checkMenuEdit('notifikasi');
         if ($check !== true) return $check;
 
         $periodeAktif = $this->periodeModel->getAktif();
@@ -106,7 +106,7 @@ class NotifikasiController extends BaseController
 
     public function sendReminderAll()
     {
-        $check = $this->checkMenuAccess('notifikasi');
+        $check = $this->checkMenuEdit('notifikasi');
         if ($check !== true) return $check;
 
         $periodeAktif = $this->periodeModel->getAktif();

@@ -350,7 +350,7 @@ $isAdmin = (session()->get('role') === 'admin'); // Shortcut flag penentu Admin
                   <small class="text-muted" style="font-size:10px">Posisi Akhir</small>
                   <input type="number" name="realisasi[<?= $kpi['kpi_id'] ?>]"
                          class="form-control form-control-sm realisasi-input"
-                         value="<?= $ex ? $ex['realisasi'] : '' ?>" <?= $roAttr ?>>
+                         value="<?= ($ex && $ex['realisasi'] !== null) ? rtrim(rtrim(sprintf('%.4f', (float)$ex['realisasi']), '0'), '.') : '' ?>" <?= $roAttr ?>>
                 </div>
                 <div>
                   <small class="text-muted" style="font-size:10px">Rata-rata Harian (%)</small>
@@ -364,7 +364,7 @@ $isAdmin = (session()->get('role') === 'admin'); // Shortcut flag penentu Admin
               <?php else: ?>
                 <input type="number" name="realisasi[<?= $kpi['kpi_id'] ?>]"
                        class="form-control realisasi-input"
-                       value="<?= $ex ? $ex['realisasi'] : '' ?>" <?= $roAttr ?>>
+                       value="<?= ($ex && $ex['realisasi'] !== null) ? rtrim(rtrim(sprintf('%.4f', (float)$ex['realisasi']), '0'), '.') : '' ?>" <?= $roAttr ?>>
               <?php endif; ?>
             </td>
             <td class="text-center fw-bold text-muted">
@@ -401,7 +401,7 @@ $isAdmin = (session()->get('role') === 'admin'); // Shortcut flag penentu Admin
               <?= round($bobot * 100, 1) ?>%
             </td>
             <td class="text-center">
-              <input type="number" name="nilai_kontribusi[<?= $kpi['kpi_id'] ?>]"
+              <input type="text" inputmode="decimal" name="nilai_kontribusi[<?= $kpi['kpi_id'] ?>]"
                      class="form-control form-control-sm kontribusi-output text-center fw-bold"
                      value="<?= $ex ? number_format((float)$ex['nilai_kontribusi'], 2, '.', '') : '' ?>"
                      readonly style="background:#eec; font-size:12px; color:#1F4E79;">
@@ -544,7 +544,7 @@ $isAdmin = (session()->get('role') === 'admin'); // Shortcut flag penentu Admin
               <?= round((float)$t['bobot'] * 100, 2) ?>%
             </td>
             <td class="text-center fw-bold kontribusi-turunan-output" id="kontribT_<?= $t['id'] ?>" style="font-size:12px;color:#1F4E79">
-              <?= ($exT && isset($exT['nilai_kontribusi'])) ? number_format((float)$exT['nilai_kontribusi'], 4) : '' ?>
+              <?= ($exT && isset($exT['nilai_kontribusi'])) ? number_format((float)$exT['nilai_kontribusi'], 2) : '' ?>
             </td>
             <td>
               <input type="text"
@@ -806,7 +806,7 @@ document.addEventListener('DOMContentLoaded', function() {
                     }
                 }
                 if (data.valid && kontribCell) {
-                    kontribCell.textContent = parseFloat(data.kontribusi_t).toFixed(4);
+                    kontribCell.textContent = parseFloat(data.kontribusi_t).toFixed(2);
                 }
                 hitungUlangInduk(indukKpiId);
             })

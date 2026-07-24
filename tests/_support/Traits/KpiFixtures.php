@@ -220,4 +220,20 @@ trait KpiFixtures
             'last_activity'        => time(),
         ];
     }
+
+    /**
+     * Ubah baris role_permission (can_view/can_edit) untuk suatu role &
+     * kode_menu — dipakai test yang perlu mengendalikan langsung matriks
+     * hak akses di luar default MenuListSeeder (mis. menguji efek toggle
+     * "Bisa Edit", atau memberi/mencabut akses suatu menu untuk suatu role).
+     */
+    protected function setPermission(string $role, string $kodeMenu, bool $canView, bool $canEdit): void
+    {
+        $permModel = new \App\Models\RolePermissionModel();
+        $menu      = $permModel->db->table('menu_list')
+            ->where('kode_menu', $kodeMenu)
+            ->get()->getRowArray();
+
+        $permModel->updatePermission($role, (int) $menu['id'], $canView, $canEdit);
+    }
 }

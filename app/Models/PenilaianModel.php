@@ -117,4 +117,35 @@ class PenilaianModel extends Model
         }
         return $rows;
     }
+
+    /**
+     * Hitung jumlah pegawai yang penilaiannya sudah disubmit Drafter tapi
+     * belum di-approve/ditolak Approver, untuk satu periode (opsional
+     * dibatasi ke satu divisi) — dipakai badge notifikasi di sidebar untuk
+     * role Approver. Status gabungan per pegawai memakai logika yang sama
+     * dengan getRekapKombinasi() (draft > rejected > submitted > approved),
+     * supaya konsisten dengan Rekap & tetap benar walau ada baris KPI yang
+     * status-nya belum seragam untuk pegawai yang sama.
+     */
+    public function getCountSubmittedUntukDivisi(int $periodeId, ?int $divisiId = null): int
+    {
+        $builder = $this->db->table('penilaian p')
+            ->select('p.pegawai_id,
+                      CASE
+                        WHEN SUM(CASE WHEN p.status = \'draft\' THEN 1 ELSE 0 END) > 0 THEN \'draft\'
+                        WHEN SUM(CASE WHEN p.status = \'rejected\' THEN 1 ELSE 0 END) > 0 THEN \'rejected\'
+                        WHEN SUM(CASE WHEN p.status = \'submitted\' THEN 1 ELSE 0 END) > 0 THEN \'submitted\'
+                        ELSE \'approved\'
+                      END as status_gabungan')
+            ->where('p.periode_id', $periodeId);
+
+        if ($divisiId !== null) {
+            $builder->join('pegawai pg', 'pg.id = p.pegawai_id')
+                    ->where('pg.divisi_id', $divisiId);
+        }
+
+        $rows = $builder->groupBy('p.pegawai_id')->get()->getResultArray();
+
+        return count(array_filter($rows, fn($r) => $r['status_gabungan'] === 'submitted'));
+    }
 }

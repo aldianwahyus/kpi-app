@@ -135,4 +135,16 @@ final class DraftUlangFeatureTest extends KpiTestCase
         $reqAfter = (new DraftUlangRequestModel())->find($req['id']);
         $this->assertSame('pending', $reqAfter['status']);
     }
+
+    // ── Regresi: index() sebelumnya dideklarasikan `: string` padahal
+    // cabang non-admin mengembalikan RedirectResponse — memicu TypeError
+    // (HTTP 500) alih-alih redirect ramah, untuk siapa pun yang membuka
+    // /draft-ulang tanpa role admin (mis. lewat bookmark/URL langsung).
+    public function testNonAdminMengaksesIndexTidakCrashDanDiredirect(): void
+    {
+        $result = $this->withSession($this->sessionFor('hr', 1))
+            ->get('draft-ulang');
+
+        $this->assertRedirectEndsWith($result, 'dashboard');
+    }
 }

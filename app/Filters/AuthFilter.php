@@ -40,6 +40,38 @@ class AuthFilter implements FilterInterface
 
         session()->set('last_activity', time());
 
+        // Sinkronisasi status akun & role dari database — mencegah user
+        // yang baru dinonaktifkan atau diganti role-nya oleh Admin lewat
+        // Manajemen User tetap beroperasi dengan hak akses lama selama
+        // sesinya masih hidup. Hanya diperiksa jika baris user-nya memang
+        // ditemukan — sengaja TIDAK menghancurkan sesi bila baris tidak
+        // ditemukan (mis. skenario pengujian yang tidak menyiapkan baris
+        // 'users' sungguhan), karena pada penggunaan nyata user_id sesi
+        // selalu berasal dari baris 'users' yang valid saat login.
+        $userId = session()->get('user_id');
+        if ($userId) {
+            $userRow = (new \App\Models\UserModel())
+                ->select('is_active, role')
+                ->find($userId);
+
+            if ($userRow) {
+                if ((int) $userRow['is_active'] !== 1) {
+                    session()->destroy();
+
+                    if ($request->isAJAX()) {
+                        return service('response')->setStatusCode(401)
+                            ->setJSON(['error' => 'Akun Anda telah dinonaktifkan.']);
+                    }
+                    return redirect()->to(base_url('auth/login'))
+                                     ->with('error', 'Akun Anda telah dinonaktifkan. Silakan hubungi Administrator.');
+                }
+
+                if ($userRow['role'] !== session()->get('role')) {
+                    session()->set('role', $userRow['role']);
+                }
+            }
+        }
+
         // Paksa pengguna mengganti password apabila flag must_change_password
         // aktif — berlaku untuk akun baru, akun yang di-reset Admin, maupun
         // akun yang dibuat lewat import massal Excel. Pengguna tidak dapat

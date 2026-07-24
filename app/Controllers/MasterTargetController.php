@@ -167,7 +167,7 @@ class MasterTargetController extends BaseController
     // ── Simpan Target Bulanan & Bobot Tahunan ────────────────────────
     public function save(int $pegawaiId)
     {
-        $check = $this->checkMenuAccess('master_target');
+        $check = $this->checkMenuEdit('master_target');
         if ($check !== true) return $check;
 
         if (!$this->canAccessPegawai($pegawaiId)) return $this->forbidden();
@@ -321,7 +321,7 @@ class MasterTargetController extends BaseController
     // tidak menghapus pekerjaan yang sudah dilakukan Admin sebelumnya.
     public function copyDariPegawai(int $pegawaiId)
     {
-        $check = $this->checkMenuAccess('master_target');
+        $check = $this->checkMenuEdit('master_target');
         if ($check !== true) return $check;
 
         if (!$this->canAccessPegawai($pegawaiId)) return $this->forbidden();
@@ -660,7 +660,7 @@ class MasterTargetController extends BaseController
 
     public function importProcess()
     {
-        $check = $this->checkMenuAccess('master_target');
+        $check = $this->checkMenuEdit('master_target');
         if ($check !== true) return $check;
 
         $file = $this->request->getFile('file_excel');

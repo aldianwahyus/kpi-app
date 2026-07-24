@@ -11,18 +11,13 @@ class PeriodeController extends BaseController
     public function __construct()
     {
         $this->periodeModel = new PeriodeModel();
-
-        $role = session()->get('role');
-        if ($role !== 'admin' && $role !== 'hr') {
-            session()->setFlashdata('error', 'Anda tidak memiliki akses ke halaman Periode Penilaian.');
-            header('Location: ' . base_url('dashboard'));
-            exit;
-        }
     }
 
     // ── Daftar Periode ───────────────────────────────────────
-    public function index(): string
+    public function index()
     {
+        $check = $this->checkMenuAccess('master_periode');
+        if ($check !== true) return $check;
 
         return view('layouts/main', [
             'title'   => 'Periode Penilaian',
@@ -34,8 +29,11 @@ class PeriodeController extends BaseController
     }
 
     // ── Form Tambah ──────────────────────────────────────────
-    public function create(): string
+    public function create()
     {
+        $check = $this->checkMenuAccess('master_periode');
+        if ($check !== true) return $check;
+
         return view('layouts/main', [
             'title'   => 'Buat Periode Baru',
             'content' => view('master/periode/_form', [
@@ -48,6 +46,9 @@ class PeriodeController extends BaseController
     // ── Simpan ───────────────────────────────────────────────
     public function store()
     {
+        $check = $this->checkMenuEdit('master_periode');
+        if ($check !== true) return $check;
+
         // 1. Aturan Validasi Form
         $rules = [
             'nama'        => 'required|trim|min_length[3]',
@@ -133,6 +134,9 @@ class PeriodeController extends BaseController
     // ── Form Edit ────────────────────────────────────────────
     public function edit(int $id)
     {
+        $check = $this->checkMenuAccess('master_periode');
+        if ($check !== true) return $check;
+
         $periode = $this->periodeModel->find($id);
         if (!$periode) {
             return redirect()->to(base_url('master/periode'))
@@ -151,6 +155,9 @@ class PeriodeController extends BaseController
     // ── Update ───────────────────────────────────────────────
     public function update(int $id)
     {
+        $check = $this->checkMenuEdit('master_periode');
+        if ($check !== true) return $check;
+
         $existingPeriode = $this->periodeModel->find($id);
         if (!$existingPeriode) {
             return redirect()->to(base_url('master/periode'))
@@ -248,6 +255,9 @@ class PeriodeController extends BaseController
     // ── Ubah Status Cepat ────────────────────────────────────
     public function setStatus(int $id, string $status)
     {
+        $check = $this->checkMenuEdit('master_periode');
+        if ($check !== true) return $check;
+
         $periode = $this->periodeModel->find($id);
         if (!$periode) {
             return redirect()->to(base_url('master/periode'))
@@ -287,6 +297,9 @@ class PeriodeController extends BaseController
     // ── Hapus ────────────────────────────────────────────────
     public function delete(int $id)
     {
+        $check = $this->checkMenuEdit('master_periode');
+        if ($check !== true) return $check;
+
         $periode = $this->periodeModel->find($id);
         if (!$periode) {
             return redirect()->to(base_url('master/periode'))

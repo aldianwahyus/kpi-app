@@ -95,17 +95,14 @@
           </select>
         </div>
 
-        <!-- Perubahan Polarity -->
+        <!-- Perubahan Polarity — otomatis mengikuti Polarity, tidak lagi
+             diinput manual (lihat catatan di MasterController::kpiStore()/
+             kpiUpdate()). -->
         <div class="col-md-3">
-          <label class="form-label fw-semibold small">Perubahan Polarity <span class="text-danger">*</span></label>
-          <select name="perubahan_polarity" class="form-select form-select-sm" required>
-            <option value="pos" <?= old('perubahan_polarity', $kpi['perubahan_polarity'] ?? '') === 'pos' ? 'selected' : '' ?>>
-              Positif → Real / Target
-            </option>
-            <option value="neg" <?= old('perubahan_polarity', $kpi['perubahan_polarity'] ?? '') === 'neg' ? 'selected' : '' ?>>
-              Negatif → Target / Real
-            </option>
-          </select>
+          <label class="form-label fw-semibold small">Perubahan Polarity</label>
+          <div class="form-control form-control-sm bg-light text-muted" style="font-size:12px">
+            <?= (old('polarity', $kpi['polarity'] ?? '') === 'min') ? 'Negatif → Target/Real' : 'Positif → Real/Target' ?>
+          </div>
         </div>
 
         <!-- Total Bobot Perspektif -->

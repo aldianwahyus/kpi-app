@@ -19,7 +19,8 @@ class UserController extends BaseController
     // ── Daftar User ──────────────────────────────────────────
     public function index()
     {
-        if (!in_array(session()->get('role'), ['admin', 'hr'])) return $this->forbidden();
+        $check = $this->checkMenuAccess('master_users');
+        if ($check !== true) return $check;
 
         $users = $this->userModel->db->table('users u')
             ->select('u.id, u.nama, u.email, u.role, u.is_active, u.last_login, u.pegawai_id,
@@ -50,7 +51,8 @@ class UserController extends BaseController
     // ── Form Tambah ──────────────────────────────────────────
     public function create()
     {
-        if (!in_array(session()->get('role'), ['admin', 'hr'])) return $this->forbidden();
+        $check = $this->checkMenuAccess('master_users');
+        if ($check !== true) return $check;
 
         return view('layouts/main', [
             'title'   => 'Tambah User',
@@ -65,7 +67,8 @@ class UserController extends BaseController
     // ── Simpan Tambah ────────────────────────────────────────
     public function store()
     {
-        if (!in_array(session()->get('role'), ['admin', 'hr'])) return $this->forbidden();
+        $check = $this->checkMenuEdit('master_users');
+        if ($check !== true) return $check;
 
         // Validasi input dengan penambahan rule 'trim' untuk menangani whitespace
         if (!$this->validate([
@@ -98,7 +101,8 @@ class UserController extends BaseController
     // ── Form Edit ────────────────────────────────────────────
     public function edit(int $id)
     {
-        if (!in_array(session()->get('role'), ['admin', 'hr'])) return $this->forbidden();
+        $check = $this->checkMenuAccess('master_users');
+        if ($check !== true) return $check;
 
         $user = $this->userModel->find($id);
         if (!$user) {
@@ -120,7 +124,8 @@ class UserController extends BaseController
     // ── Update ───────────────────────────────────────────────
     public function update(int $id)
     {
-        if (!in_array(session()->get('role'), ['admin', 'hr'])) return $this->forbidden();
+        $check = $this->checkMenuEdit('master_users');
+        if ($check !== true) return $check;
 
         // Aturan email unique dengan pengecualian ID saat ini & penanganan whitespace
         $emailRule = "required|trim|valid_email|is_unique[users.email,id,$id]";
@@ -162,7 +167,8 @@ class UserController extends BaseController
     // ── Toggle Aktif ─────────────────────────────────────────
     public function toggle(int $id)
     {
-        if (!in_array(session()->get('role'), ['admin', 'hr'])) return $this->forbidden();
+        $check = $this->checkMenuEdit('master_users');
+        if ($check !== true) return $check;
 
         // Jangan nonaktifkan diri sendiri
         if ($id == session()->get('user_id')) {
@@ -184,7 +190,8 @@ class UserController extends BaseController
     // ── Reset Password ───────────────────────────────────────
     public function resetPassword(int $id)
     {
-        if (!in_array(session()->get('role'), ['admin', 'hr'])) return $this->forbidden();
+        $check = $this->checkMenuEdit('master_users');
+        if ($check !== true) return $check;
 
         $user = $this->userModel->find($id);
         if (!$user) {
@@ -209,7 +216,8 @@ class UserController extends BaseController
     // ── Hapus ────────────────────────────────────────────────
     public function delete(int $id)
     {
-        if (!in_array(session()->get('role'), ['admin', 'hr'])) return $this->forbidden();
+        $check = $this->checkMenuEdit('master_users');
+        if ($check !== true) return $check;
 
         if ($id == session()->get('user_id')) {
             return redirect()->to(base_url('master/users'))

@@ -223,7 +223,7 @@ class PenilaianController extends BaseController
 
     public function store(int $pegawaiId)
     {
-        $check = $this->checkMenuAccess('penilaian');
+        $check = $this->checkMenuEdit('penilaian');
         if ($check !== true) return $check;
 
         if (!$this->canAccessPegawai($pegawaiId)) return $this->forbidden();
@@ -479,7 +479,7 @@ class PenilaianController extends BaseController
 
     public function submit(int $pegawaiId)
     {
-        $check = $this->checkMenuAccess('penilaian');
+        $check = $this->checkMenuEdit('penilaian');
         if ($check !== true) return $check;
 
         if (!$this->canAccessPegawai($pegawaiId)) return $this->forbidden();
@@ -509,10 +509,10 @@ class PenilaianController extends BaseController
 
     public function approve(int $pegawaiId)
     {
-        $role = session()->get('role');
-        if (!in_array($role, ['admin', 'hr', 'approver'])) {
-            return $this->forbidden('Anda tidak memiliki kewenangan untuk meng-approve penilaian.');
-        }
+        $check = $this->checkMenuEdit('approval');
+        if ($check !== true) return $check;
+
+        if (!$this->canAccessPegawai($pegawaiId)) return $this->forbidden();
 
         $periode = $this->periodeModel->getAktif();
         if (!$periode) {
@@ -539,10 +539,10 @@ class PenilaianController extends BaseController
 
     public function reject(int $pegawaiId)
     {
-        $role = session()->get('role');
-        if (!in_array($role, ['admin', 'hr', 'approver'])) {
-            return $this->forbidden('Anda tidak memiliki kewenangan untuk menolak penilaian.');
-        }
+        $check = $this->checkMenuEdit('approval');
+        if ($check !== true) return $check;
+
+        if (!$this->canAccessPegawai($pegawaiId)) return $this->forbidden();
 
         $note = trim($this->request->getPost('reject_note') ?? '');
         if (empty($note)) return redirect()->back()->with('error', 'Catatan wajib diisi.');

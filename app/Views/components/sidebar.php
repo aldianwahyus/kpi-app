@@ -94,6 +94,28 @@ $canShow = function($kode) use ($permModel, $role) {
         <li class="nav-item">
           <a href="<?= base_url('penilaian') ?>" style="display:flex; align-items:center; gap:8px; text-decoration:none;">
             <i class="ti ti-clipboard-list"></i> Input Penilaian
+            <?php
+            // Badge jumlah penilaian yang sudah disubmit Drafter tapi
+            // belum di-approve/ditolak — hanya relevan untuk Approver,
+            // dibatasi ke divisinya sendiri (sama seperti scope Approver
+            // di modul Penilaian/Rekap lainnya).
+            if ($role === 'approver'):
+                $periodeAktifSidebar = (new \App\Models\PeriodeModel())->getAktif();
+                $submittedCount = 0;
+                if ($periodeAktifSidebar) {
+                    $myPegawaiIdSidebar = session()->get('pegawai_id');
+                    $myDivisiIdSidebar  = $myPegawaiIdSidebar
+                        ? ((new \App\Models\PegawaiModel())->find($myPegawaiIdSidebar)['divisi_id'] ?? null)
+                        : null;
+                    $submittedCount = (new \App\Models\PenilaianModel())
+                        ->getCountSubmittedUntukDivisi($periodeAktifSidebar['id'], $myDivisiIdSidebar);
+                }
+                if ($submittedCount > 0):
+            ?>
+            <span id="badge-submitted-count" class="badge bg-warning text-dark ms-1" style="font-size:10px">
+              <?= $submittedCount ?>
+            </span>
+            <?php endif; endif; ?>
           </a>
         </li>
         <?php endif; ?>
@@ -143,7 +165,17 @@ $canShow = function($kode) use ($permModel, $role) {
     <?php endif; ?>
 
     <!-- MASTER DATA -->
-    <?php if ($canShow('master_data')): ?>
+    <?php
+    // Header section muncul jika role punya akses ke SALAH SATU menu di
+    // dalamnya (sama seperti pola section "Penilaian" di atas) — bukan
+    // lagi bergantung pada kode 'master_data' terpisah, yang sebelumnya
+    // membuat item yang sudah diberi izin sendiri (mis. 'kpi_pegawai')
+    // tetap tersembunyi selama toggle grup itu sendiri belum dicentang.
+    $showMasterData = $canShow('master_direktorat') || $canShow('master_unitkerja')
+        || $canShow('master_kpidivisi') || $canShow('kpi_pegawai') || $canShow('master_target')
+        || $canShow('pegawai') || $canShow('master_periode') || $canShow('master_users');
+    ?>
+    <?php if ($showMasterData || $role === 'admin'): ?>
     <li class="nav-section mt-3">
       <a href="#collapseMaster" data-bs-toggle="collapse" role="button" aria-expanded="false" style="color:inherit; text-decoration:none; display:flex; justify-content:between; width:100%; font-weight:600;">
         <span>Master Data</span>
@@ -151,14 +183,30 @@ $canShow = function($kode) use ($permModel, $role) {
       </a>
     </li>
     <div class="collapse" id="collapseMaster">
+      <?php if ($canShow('master_direktorat')): ?>
       <li class="nav-item"><a href="<?= base_url('master/direktorat') ?>" style="display:flex; align-items:center; gap:8px; text-decoration:none;"><i class="ti ti-building"></i> Direktorat</a></li>
+      <?php endif; ?>
+      <?php if ($canShow('master_unitkerja')): ?>
       <li class="nav-item"><a href="<?= base_url('master/unit-kerja') ?>" style="display:flex; align-items:center; gap:8px; text-decoration:none;"><i class="ti ti-building-community"></i> Unit Kerja</a></li>
+      <?php endif; ?>
+      <?php if ($canShow('master_kpidivisi')): ?>
       <li class="nav-item"><a href="<?= base_url('master/kpi-divisi') ?>" style="display:flex; align-items:center; gap:8px; text-decoration:none;"><i class="ti ti-sitemap"></i> KPI per Unit Kerja</a></li>
+      <?php endif; ?>
+      <?php if ($canShow('kpi_pegawai')): ?>
       <li class="nav-item"><a href="<?= base_url('kpi-pegawai') ?>" style="display:flex; align-items:center; gap:8px; text-decoration:none;"><i class="ti ti-user-check"></i> KPI Per Pegawai</a></li>
+      <?php endif; ?>
+      <?php if ($canShow('master_target')): ?>
       <li class="nav-item"><a href="<?= base_url('master-target') ?>" style="display:flex; align-items:center; gap:8px; text-decoration:none;"><i class="ti ti-target-arrow"></i> Master Target</a></li>
+      <?php endif; ?>
+      <?php if ($canShow('pegawai')): ?>
       <li class="nav-item"><a href="<?= base_url('pegawai') ?>" style="display:flex; align-items:center; gap:8px; text-decoration:none;"><i class="ti ti-users"></i> Data Pegawai</a></li>
+      <?php endif; ?>
+      <?php if ($canShow('master_periode')): ?>
       <li class="nav-item"><a href="<?= base_url('master/periode') ?>" style="display:flex; align-items:center; gap:8px; text-decoration:none;"><i class="ti ti-calendar"></i> Periode</a></li>
+      <?php endif; ?>
+      <?php if ($canShow('master_users')): ?>
       <li class="nav-item"><a href="<?= base_url('master/users') ?>" style="display:flex; align-items:center; gap:8px; text-decoration:none;"><i class="ti ti-settings"></i> Manajemen User</a></li>
+      <?php endif; ?>
       <?php if ($role === 'admin'): ?>
       <li class="nav-item">
         <a href="<?= base_url('master/role-permission') ?>">
@@ -170,7 +218,7 @@ $canShow = function($kode) use ($permModel, $role) {
     <?php endif; ?>
 
     <!-- TOOLS -->
-    <?php if ($canShow('tools')): ?>
+    <?php if ($canShow('notifikasi') || $canShow('ai')): ?>
     <li class="nav-section mt-3">
       <a href="#collapseTools" data-bs-toggle="collapse" role="button" aria-expanded="false" style="color:inherit; text-decoration:none; display:flex; justify-content:between; width:100%; font-weight:600;">
         <span>Tools</span>
@@ -178,13 +226,20 @@ $canShow = function($kode) use ($permModel, $role) {
       </a>
     </li>
     <div class="collapse" id="collapseTools">
+      <?php if ($canShow('notifikasi')): ?>
       <li class="nav-item"><a href="<?= base_url('notifikasi') ?>" style="display:flex; align-items:center; gap:8px; text-decoration:none;"><i class="ti ti-bell"></i> Notifikasi Email</a></li>
+      <?php endif; ?>
+      <?php if ($canShow('ai')): ?>
       <li class="nav-item"><a href="<?= base_url('ai') ?>" style="display:flex; align-items:center; gap:8px; text-decoration:none;"><i class="ti ti-robot"></i> AI Asisten KPI</a></li>
+      <?php endif; ?>
     </div>
     <?php endif; ?>
 
-    <!-- LAPORAN -->
-    <?php if ($canShow('laporan')): ?>
+    <!-- LAPORAN & AKUN -->
+    <!-- Section ini SELALU ditampilkan (tidak digate permission) karena
+         berisi "Profil" — akses ganti password sendiri yang wajib bisa
+         dijangkau setiap user yang login, apa pun izin Laporan-nya.
+         Item Export PDF/Excel di dalamnya tetap digate individual. -->
     <li class="nav-section mt-3">
       <a href="#collapseLaporan" data-bs-toggle="collapse" role="button" aria-expanded="false" style="color:inherit; text-decoration:none; display:flex; justify-content:between; width:100%; font-weight:600;">
         <span>Laporan & Akun</span>
@@ -192,14 +247,17 @@ $canShow = function($kode) use ($permModel, $role) {
       </a>
     </li>
     <div class="collapse" id="collapseLaporan">
+      <?php if ($canShow('laporan_pdf')): ?>
       <li class="nav-item"><a href="<?= base_url('laporan/pdf') ?>" style="display:flex; align-items:center; gap:8px; text-decoration:none;"><i class="ti ti-file-text"></i> Export PDF Rekap</a></li>
+      <?php endif; ?>
+      <?php if ($canShow('laporan_excel')): ?>
       <li class="nav-item"><a href="<?= base_url('laporan/excel') ?>" style="display:flex; align-items:center; gap:8px; text-decoration:none;"><i class="ti ti-file-spreadsheet"></i> Export Excel Rekap</a></li>
+      <?php endif; ?>
       <?php if ($role === 'admin'): ?>
       <li class="nav-item"><a href="<?= base_url('arsip-periode') ?>" style="display:flex; align-items:center; gap:8px; text-decoration:none;"><i class="ti ti-archive"></i> Arsip Periode</a></li>
       <?php endif; ?>
       <li class="nav-item"><a href="<?= base_url('profil') ?>" style="display:flex; align-items:center; gap:8px; text-decoration:none;"><i class="ti ti-user-circle"></i> Profil</a></li>
     </div>
-    <?php endif; ?>
 
   </ul>
 

@@ -69,7 +69,12 @@ class DashboardController extends BaseController
             $rekap = $this->penilaianModel->getRekapKombinasi($periodeId, $divisiScope);
 
             $sudahDinilai = count($rekap);
-            $belumDinilai = $totalPegawai - $sudahDinilai;
+            // max(0, ...) — pegawai yang sudah dinilai periode ini lalu
+            // dinonaktifkan (mis. resign) sebelum dashboard dibuka tetap
+            // terhitung di $rekap tapi tidak lagi di $totalPegawai (yang
+            // hanya menghitung is_active=1), sehingga selisihnya bisa
+            // negatif tanpa penjagaan ini.
+            $belumDinilai = max(0, $totalPegawai - $sudahDinilai);
 
             // Top 5 pegawai
             $topPegawai = array_slice($rekap, 0, 5);

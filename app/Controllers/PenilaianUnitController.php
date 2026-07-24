@@ -25,8 +25,11 @@ class PenilaianUnitController extends BaseController
     }
 
     // ── Daftar Divisi ────────────────────────────────────────
-    public function index(): string
-    { 
+    public function index()
+    {
+        $check = $this->checkMenuAccess('penilaian_unit');
+        if ($check !== true) return $check;
+
         $periodeAktif = $this->periodeModel->getAktif();
         $grouped      = $this->divisiModel->getGroupedByDirektorat();
         $rekap        = [];
@@ -73,6 +76,9 @@ class PenilaianUnitController extends BaseController
     // ── Form Input KPI Unit ──────────────────────────────────
     public function form(int $divisiId)
     {
+        $check = $this->checkMenuAccess('penilaian_unit');
+        if ($check !== true) return $check;
+
         $authCheck = $this->checkDivisiAccess($divisiId);
         if ($authCheck !== true) return $authCheck;
 
@@ -126,6 +132,9 @@ class PenilaianUnitController extends BaseController
     // ── Simpan KPI Unit — tanpa bobot ────────────────────────
     public function store(int $divisiId)
     {
+        $check = $this->checkMenuEdit('penilaian_unit');
+        if ($check !== true) return $check;
+
         $authCheck = $this->checkDivisiAccess($divisiId);
         if ($authCheck !== true) return $authCheck;
 
@@ -225,12 +234,12 @@ class PenilaianUnitController extends BaseController
     }
 
     // ── Helper: Otorisasi akses divisi (dipakai form() & store()) ──
+    // Hanya membatasi SCOPE divisi untuk Drafter/Approver — otorisasi
+    // akses menu itu sendiri sudah dilakukan lebih dulu oleh
+    // checkMenuAccess()/checkMenuEdit('penilaian_unit') di form()/store().
     private function checkDivisiAccess(int $divisiId)
     {
         $role = session()->get('role');
-        if (!in_array($role, ['admin', 'hr', 'drafter', 'approver'])) {
-            return $this->forbidden('Anda tidak memiliki kewenangan untuk mengakses KPI Unit.');
-        }
 
         if (in_array($role, ['drafter', 'approver'])) {
             $myPegawaiId = session()->get('pegawai_id');

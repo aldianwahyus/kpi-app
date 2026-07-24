@@ -88,19 +88,15 @@
           </select>
         </div>
 
-        <!-- Perubahan Polarity — hanya untuk Maximize/Minimize (skema lama) -->
+        <!-- Perubahan Polarity — otomatis mengikuti Polarity (Maximize =
+             Realisasi/Target, Minimize = Target/Realisasi), tidak lagi
+             diinput manual supaya tidak bisa terjadi kombinasi yang saling
+             bertentangan (mis. Maximize tapi rumusnya kebalik). -->
         <div class="col-md-6 polarity-field" data-for="max,min">
           <label class="form-label fw-semibold small">Perubahan Polarity</label>
-          <select name="perubahan_polarity" class="form-select form-select-sm">
-            <option value="pos"
-              <?= old('perubahan_polarity', $kpi['perubahan_polarity'] ?? 'pos') === 'pos' ? 'selected' : '' ?>>
-              Positif → Real/Target
-            </option>
-            <option value="neg"
-              <?= old('perubahan_polarity', $kpi['perubahan_polarity'] ?? 'pos') === 'neg' ? 'selected' : '' ?>>
-              Negatif → Target/Real
-            </option>
-          </select>
+          <div class="form-control form-control-sm bg-light text-muted" style="font-size:12px" id="info-perubahan-polarity">
+            <?= $curPolarity === 'min' ? 'Negatif → Target/Realisasi' : 'Positif → Realisasi/Target' ?>
+          </div>
         </div>
 
         <!-- Precise is Better — 3 toleransi deviasi (%) simetris dari target,
@@ -223,6 +219,8 @@
     const selPolarity = document.getElementById('sel-polarity');
     if (!selPolarity) return;
 
+    const infoPerubahan = document.getElementById('info-perubahan-polarity');
+
     function toggleFields() {
         const polarity = selPolarity.value;
         document.querySelectorAll('.polarity-field').forEach(function (el) {
@@ -233,6 +231,11 @@
                 field.disabled = !active;
             });
         });
+        if (infoPerubahan) {
+            infoPerubahan.textContent = polarity === 'min'
+                ? 'Negatif → Target/Realisasi'
+                : 'Positif → Realisasi/Target';
+        }
     }
 
     selPolarity.addEventListener('change', toggleFields);

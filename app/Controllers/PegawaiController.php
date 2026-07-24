@@ -76,7 +76,7 @@ class PegawaiController extends BaseController
     // ── Simpan Tambah ────────────────────────────────────────
     public function store()
     {
-        $check = $this->checkMenuAccess('pegawai');
+        $check = $this->checkMenuEdit('pegawai');
         if ($check !== true) return $check;
 
         // 1. Aturan Validasi Form (NIP & Email unik otomatis)
@@ -191,7 +191,7 @@ class PegawaiController extends BaseController
 
     public function update(int $id)
     {
-        $check = $this->checkMenuAccess('pegawai');
+        $check = $this->checkMenuEdit('pegawai');
         if ($check !== true) return $check;
 
         $pegawaiExisting = $this->pegawaiModel->find($id);
@@ -289,7 +289,7 @@ class PegawaiController extends BaseController
 
     public function toggle(int $id)
     {
-        $check = $this->checkMenuAccess('pegawai');
+        $check = $this->checkMenuEdit('pegawai');
         if ($check !== true) return $check;
 
         $pegawai = $this->pegawaiModel->find($id);
@@ -299,7 +299,7 @@ class PegawaiController extends BaseController
 
     public function delete(int $id)
     {
-        $check = $this->checkMenuAccess('pegawai');
+        $check = $this->checkMenuEdit('pegawai');
         if ($check !== true) return $check;
 
         $pegawai = $this->pegawaiModel->find($id);
@@ -471,7 +471,7 @@ class PegawaiController extends BaseController
     // ── Proses Import ─────────────────────────────────────────
     public function importProcess()
     {
-        $check = $this->checkMenuAccess('pegawai');
+        $check = $this->checkMenuEdit('pegawai');
         if ($check !== true) return $check;
 
         $file = $this->request->getFile('file_excel');

@@ -11,19 +11,23 @@ class MasterController extends BaseController
     public function __construct()
     {
         $this->kpiModel = new KpiMasterModel();
+    }
 
-        // Seluruh operasi Master Data (KPI, Direktorat, Unit Kerja, Periode,
-        // KPI Divisi, KPI Unit) hanya boleh diakses oleh Administrator.
-        // Pengecekan dilakukan di konstruktor karena SEMUA method di
-        // controller ini berbagi persyaratan akses yang sama persis.
+    /**
+     * "Master KPI" (kpi*() di bawah) adalah fitur lama yang sudah tidak
+     * ditautkan dari sidebar manapun (digantikan KPI per Direktorat/Divisi)
+     * dan tidak punya baris di menu_list, sehingga tidak bisa diatur lewat
+     * layar "Hak Akses Role". Karena tidak configurable, aksesnya tetap
+     * dikunci admin/hr langsung di sini (bukan lewat checkMenuAccess, yang
+     * akan selalu menolak non-admin karena tidak ada baris permission-nya).
+     */
+    private function requireAdminAtauHr()
+    {
         $role = session()->get('role');
         if ($role !== 'admin' && $role !== 'hr') {
-            // Tidak bisa memanggil $this->forbidden() sebelum DI siap,
-            // gunakan session flash + redirect langsung.
-            session()->setFlashdata('error', 'Anda tidak memiliki akses ke halaman Master Data.');
-            header('Location: ' . base_url('dashboard'));
-            exit;
+            return $this->forbidden('Anda tidak memiliki akses ke halaman Master KPI.');
         }
+        return true;
     }
 
     /**
@@ -92,9 +96,15 @@ class MasterController extends BaseController
     private function collectKpiUnitPolarityData(string $polarity): array
     {
         return [
-            'perubahan_polarity' => in_array($polarity, ['max', 'min'], true)
-                ? ($this->request->getPost('perubahan_polarity') ?? 'pos')
-                : 'pos',
+            // Perubahan Polarity tidak lagi diinput manual — field ini
+            // hanyalah representasi lain dari Polarity itu sendiri (skema
+            // lama: "Positif" = Maximize, "Negatif" = Minimize), jadi selalu
+            // diturunkan langsung dari Polarity yang dipilih agar tidak
+            // pernah terjadi kombinasi yang saling bertentangan (mis.
+            // Polarity=Maximize tapi Perubahan=Negatif, yang akan membuat
+            // rumus capaian di KpiCalculationService::hitungCapaian()
+            // diam-diam terbalik ke arah minimize).
+            'perubahan_polarity' => $polarity === 'min' ? 'neg' : 'pos',
             'toleransi_skor4' => $polarity === 'precise' ? $this->request->getPost('toleransi_skor4') : null,
             'toleransi_skor3' => $polarity === 'precise' ? $this->request->getPost('toleransi_skor3') : null,
             'toleransi_skor2' => $polarity === 'precise' ? $this->request->getPost('toleransi_skor2') : null,
@@ -103,8 +113,11 @@ class MasterController extends BaseController
     }
 
     // ── Daftar KPI ──────────────────────────────────────────
-    public function kpi(): string
+    public function kpi()
     {
+        $check = $this->requireAdminAtauHr();
+        if ($check !== true) return $check;
+
         $grouped     = $this->kpiModel->getGroupedByPerspektif();
         $totalBobot  = $this->kpiModel->getTotalBobot();
 
@@ -118,8 +131,11 @@ class MasterController extends BaseController
     }
 
     // ── Form Tambah ──────────────────────────────────────────
-    public function kpiCreate(): string
+    public function kpiCreate()
     {
+        $check = $this->requireAdminAtauHr();
+        if ($check !== true) return $check;
+
         return view('layouts/main', [
             'title'   => 'Tambah KPI',
             'content' => view('master/kpi/_form', [
@@ -132,6 +148,9 @@ class MasterController extends BaseController
     // ── Simpan Tambah ────────────────────────────────────────
     public function kpiStore()
     {
+        $check = $this->requireAdminAtauHr();
+        if ($check !== true) return $check;
+
         // 1. Aturan Validasi (Ditambahkan rule is_unique[kpi.kode])
         $rules = [
             'nama_kpi'           => 'required|trim|min_length[3]',
@@ -140,7 +159,6 @@ class MasterController extends BaseController
             'satuan'             => 'required|trim',
             'bobot'              => 'required|decimal',
             'polarity'           => 'required|in_list[max,min]',
-            'perubahan_polarity' => 'required|in_list[pos,neg]',
         ];
 
         // 2. Pesan Error Custom
@@ -164,7 +182,8 @@ class MasterController extends BaseController
                 ->with('errors', $this->validator->getErrors());
         }
 
-        $kode = strtoupper(trim($this->request->getPost('kode')));
+        $kode     = strtoupper(trim($this->request->getPost('kode')));
+        $polarity = $this->request->getPost('polarity');
 
         // 4. Simpan Data dengan Sanitasi Input
         $this->kpiModel->insert([
@@ -174,8 +193,10 @@ class MasterController extends BaseController
             'satuan'                 => trim($this->request->getPost('satuan')),
             'bobot'                  => (float) $this->request->getPost('bobot'),
             'total_bobot_perspektif' => $this->request->getPost('total_bobot_perspektif') ?: null,
-            'polarity'               => $this->request->getPost('polarity'),
-            'perubahan_polarity'     => $this->request->getPost('perubahan_polarity'),
+            'polarity'               => $polarity,
+            // Diturunkan dari Polarity, bukan diinput manual — lihat catatan
+            // di collectKpiUnitPolarityData().
+            'perubahan_polarity'     => $polarity === 'min' ? 'neg' : 'pos',
             'is_kualitatif'          => $this->request->getPost('is_kualitatif') ? 1 : 0,
             'rubrik_sheet'           => trim($this->request->getPost('rubrik_sheet') ?? '') ?: null,
             'is_active'              => 1,
@@ -189,6 +210,9 @@ class MasterController extends BaseController
     // ── Form Edit ────────────────────────────────────────────
     public function kpiEdit(int $id)
     {
+        $check = $this->requireAdminAtauHr();
+        if ($check !== true) return $check;
+
         $kpi = $this->kpiModel->find($id);
         if (!$kpi) {
             return redirect()->to(base_url('master/kpi'))
@@ -207,6 +231,9 @@ class MasterController extends BaseController
     // ── Simpan Edit ──────────────────────────────────────────
     public function kpiUpdate(int $id)
     {
+        $check = $this->requireAdminAtauHr();
+        if ($check !== true) return $check;
+
         // 1. Pre-Sanitasi Data Input (Trim sebelum masuk engine validation)
         $namaKpi    = trim($this->request->getPost('nama_kpi') ?? '');
         $satuan     = trim($this->request->getPost('satuan') ?? '');
@@ -229,7 +256,6 @@ class MasterController extends BaseController
             'satuan'             => 'required|min_length[1]',
             'bobot'              => 'required|decimal',
             'polarity'           => 'required|in_list[max,min]',
-            'perubahan_polarity' => 'required|in_list[pos,neg]',
         ];
 
         // 3. Pesan Error Custom
@@ -265,6 +291,7 @@ class MasterController extends BaseController
         }
 
         $kodeUpper = strtoupper($kode);
+        $polarity  = $this->request->getPost('polarity');
 
         // 5. Update Data (Menggunakan variabel yang sudah bersih)
         $this->kpiModel->update($id, [
@@ -274,8 +301,10 @@ class MasterController extends BaseController
             'satuan'                 => $satuan,
             'bobot'                  => (float) $this->request->getPost('bobot'),
             'total_bobot_perspektif' => $this->request->getPost('total_bobot_perspektif') ?: null,
-            'polarity'               => $this->request->getPost('polarity'),
-            'perubahan_polarity'     => $this->request->getPost('perubahan_polarity'),
+            'polarity'               => $polarity,
+            // Diturunkan dari Polarity, bukan diinput manual — lihat catatan
+            // di collectKpiUnitPolarityData().
+            'perubahan_polarity'     => $polarity === 'min' ? 'neg' : 'pos',
             'is_kualitatif'          => $this->request->getPost('is_kualitatif') ? 1 : 0,
             'rubrik_sheet'           => trim($this->request->getPost('rubrik_sheet') ?? '') ?: null,
             'urutan'                 => (int) $this->request->getPost('urutan') ?: 99,
@@ -288,6 +317,9 @@ class MasterController extends BaseController
     // ── Toggle Aktif/Nonaktif ────────────────────────────────
     public function kpiToggle(int $id)
     {
+        $check = $this->requireAdminAtauHr();
+        if ($check !== true) return $check;
+
         $kpi = $this->kpiModel->find($id);
         if ($kpi) {
             $this->kpiModel->update($id, [
@@ -301,13 +333,19 @@ class MasterController extends BaseController
     // ── Hapus ────────────────────────────────────────────────
     public function kpiDelete(int $id)
     {
+        $check = $this->requireAdminAtauHr();
+        if ($check !== true) return $check;
+
         $this->kpiModel->delete($id);
         return redirect()->to(base_url('master/kpi'))
             ->with('success', 'KPI berhasil dihapus.');
     }
     // ── Halaman Kelola KPI per Divisi ────────────────────────
-    public function kpiDivisi(): string
+    public function kpiDivisi()
     {
+        $check = $this->checkMenuAccess('master_kpidivisi');
+        if ($check !== true) return $check;
+
         $divisiModel   = new \App\Models\DivisiModel();
         $kpiDivisiModel = new \App\Models\KpiDivisiModel();
 
@@ -332,8 +370,11 @@ class MasterController extends BaseController
     }
 
     // ── Form Assign KPI ke Divisi ────────────────────────────
-    public function kpiDivisiEdit(int $divisiId): string
+    public function kpiDivisiEdit(int $divisiId)
     {
+        $check = $this->checkMenuAccess('master_kpidivisi');
+        if ($check !== true) return $check;
+
         $divisiModel    = new \App\Models\DivisiModel();
         $kpiDivisiModel = new \App\Models\KpiDivisiModel();
         $kpiUnitModel   = new \App\Models\KpiUnitModel();
@@ -379,6 +420,9 @@ class MasterController extends BaseController
     // ── Simpan Assign KPI ke Divisi ──────────────────────────
     public function kpiDivisiStore(int $divisiId)
     {
+        $check = $this->checkMenuEdit('master_kpidivisi');
+        if ($check !== true) return $check;
+
         $kpiDivisiModel = new \App\Models\KpiDivisiModel();
 
         $kpiIds  = $this->request->getPost('kpi_id')  ?? [];
@@ -421,6 +465,9 @@ class MasterController extends BaseController
     // ── Hapus satu KPI dari Divisi ───────────────────────────
     public function kpiDivisiDelete(int $id)
     {
+        $check = $this->checkMenuEdit('master_kpidivisi');
+        if ($check !== true) return $check;
+
         $kpiDivisiModel = new \App\Models\KpiDivisiModel();
         $row = $kpiDivisiModel->find($id);
 
@@ -437,6 +484,9 @@ class MasterController extends BaseController
     // ── Tambah satu KPI ke Divisi (dari kolom kanan) ─────────
     public function kpiDivisiAdd(int $divisiId)
     {
+        $check = $this->checkMenuEdit('master_kpidivisi');
+        if ($check !== true) return $check;
+
         $kpiDivisiModel = new \App\Models\KpiDivisiModel();
 
         $kpiId = (int)$this->request->getPost('kpi_id');
@@ -464,8 +514,11 @@ class MasterController extends BaseController
     }
 
     // ══ DIREKTORAT ══════════════════════════════════════════
-    public function direktorat(): string
+    public function direktorat()
     {
+        $check = $this->checkMenuAccess('master_direktorat');
+        if ($check !== true) return $check;
+
         $direktoratModel = new \App\Models\DirektoratModel();
         $kpiUnitModel    = new \App\Models\KpiUnitModel();
 
@@ -487,8 +540,11 @@ class MasterController extends BaseController
         ]);
     }
 
-    public function direktoratCreate(): string
+    public function direktoratCreate()
     {
+        $check = $this->checkMenuAccess('master_direktorat');
+        if ($check !== true) return $check;
+
         return view('layouts/main', [
             'title'   => 'Tambah Direktorat',
             'content' => view('master/direktorat/_form', [
@@ -500,6 +556,9 @@ class MasterController extends BaseController
 
     public function direktoratStore()
     {
+        $check = $this->checkMenuEdit('master_direktorat');
+        if ($check !== true) return $check;
+
         // 1. Pre-Sanitasi Input Text (trim spasi di awal & akhir)
         $kode      = trim($this->request->getPost('kode') ?? '');
         $nama      = trim($this->request->getPost('nama') ?? '');
@@ -560,6 +619,9 @@ class MasterController extends BaseController
 
     public function direktoratEdit(int $id)
     {
+        $check = $this->checkMenuAccess('master_direktorat');
+        if ($check !== true) return $check;
+
         $m   = new \App\Models\DirektoratModel();
         $dir = $m->find($id);
 
@@ -579,6 +641,9 @@ class MasterController extends BaseController
 
     public function direktoratUpdate(int $id)
     {
+        $check = $this->checkMenuEdit('master_direktorat');
+        if ($check !== true) return $check;
+
         // 1. Pre-Sanitasi Input Text (trim spasi di awal & akhir)
         $kode      = trim($this->request->getPost('kode') ?? '');
         $nama      = trim($this->request->getPost('nama') ?? '');
@@ -639,6 +704,9 @@ class MasterController extends BaseController
     // ══ KPI UNIT per DIREKTORAT ══════════════════════════════
     public function kpiUnit(int $direktoratId)
     {
+        $check = $this->checkMenuAccess('master_direktorat');
+        if ($check !== true) return $check;
+
         $direktoratModel = new \App\Models\DirektoratModel();
         $kpiUnitModel    = new \App\Models\KpiUnitModel();
 
@@ -664,6 +732,9 @@ class MasterController extends BaseController
 
     public function kpiUnitCreate(int $direktoratId)
     {
+        $check = $this->checkMenuAccess('master_direktorat');
+        if ($check !== true) return $check;
+
         $direktoratModel = new \App\Models\DirektoratModel();
         $direktorat      = $direktoratModel->find($direktoratId);
 
@@ -687,6 +758,9 @@ class MasterController extends BaseController
     // Contoh: MR-F1, MR-IP3, DU-LG2
     public function kpiUnitGenerateKode()
     {
+        $check = $this->checkMenuAccess('master_direktorat');
+        if ($check !== true) return $check;
+
         $direktoratId = (int)$this->request->getGet('direktorat_id');
         $perspektif   = $this->request->getGet('perspektif');
 
@@ -753,6 +827,9 @@ class MasterController extends BaseController
 
     public function kpiUnitStore(int $direktoratId)
     {
+        $check = $this->checkMenuEdit('master_direktorat');
+        if ($check !== true) return $check;
+
         // 1. Pre-Sanitasi Input Text (trim spasi di awal & akhir)
         $namaKpi    = trim($this->request->getPost('nama_kpi') ?? '');
         $satuan     = trim($this->request->getPost('satuan') ?? '');
@@ -877,6 +954,9 @@ class MasterController extends BaseController
 
     public function kpiUnitEdit(int $id)
     {
+        $check = $this->checkMenuAccess('master_direktorat');
+        if ($check !== true) return $check;
+
         $m   = new \App\Models\KpiUnitModel();
         $kpi = $m->find($id);
 
@@ -899,6 +979,9 @@ class MasterController extends BaseController
 
     public function kpiUnitUpdate(int $id)
     {
+        $check = $this->checkMenuEdit('master_direktorat');
+        if ($check !== true) return $check;
+
         $m   = new \App\Models\KpiUnitModel();
         $kpi = $m->find($id);
 
@@ -988,6 +1071,9 @@ class MasterController extends BaseController
 
     public function kpiUnitDelete(int $id)
     {
+        $check = $this->checkMenuEdit('master_direktorat');
+        if ($check !== true) return $check;
+
         $m   = new \App\Models\KpiUnitModel();
         $kpi = $m->find($id);
 
@@ -1005,6 +1091,9 @@ class MasterController extends BaseController
     // ── Tampilkan form Import KPI Unit ────────────────────────
     public function kpiUnitImportForm(int $direktoratId)
     {
+        $check = $this->checkMenuAccess('master_direktorat');
+        if ($check !== true) return $check;
+
         $direktoratModel = new \App\Models\DirektoratModel();
         $direktorat      = $direktoratModel->find($direktoratId);
         if (!$direktorat) {
@@ -1020,6 +1109,9 @@ class MasterController extends BaseController
     // ── Download template import KPI Unit ─────────────────────
     public function kpiUnitImportTemplate(int $direktoratId)
     {
+        $check = $this->checkMenuAccess('master_direktorat');
+        if ($check !== true) return $check;
+
         $direktoratModel = new \App\Models\DirektoratModel();
         $direktorat      = $direktoratModel->find($direktoratId);
         if (!$direktorat) {
@@ -1035,7 +1127,7 @@ class MasterController extends BaseController
             'B' => 'Nama KPI *',
             'C' => 'Satuan *',
             'D' => 'Polarity (max/min) *',
-            'E' => 'Perubahan Polarity (pos/neg) *',
+            'E' => 'Perubahan Polarity (info, otomatis ikut Polarity)',
             'F' => 'Urutan',
         ];
         foreach ($headers as $col => $h) {
@@ -1063,6 +1155,7 @@ class MasterController extends BaseController
         $sheet->setCellValue('H2', 'Kode akan digenerate otomatis oleh sistem.');
         $sheet->setCellValue('H3', 'Perspektif valid: Financial | Customer | Internal Process | Learning & Growth');
         $sheet->setCellValue('H4', "Untuk direktorat: {$direktorat['nama']}");
+        $sheet->setCellValue('H5', 'Kolom Perubahan Polarity hanya informasi, tidak dibaca saat import — otomatis mengikuti Polarity (max=Positif, min=Negatif).');
         $sheet->getColumnDimension('H')->setWidth(60);
 
         $writer   = new \PhpOffice\PhpSpreadsheet\Writer\Xlsx($spreadsheet);
@@ -1078,6 +1171,9 @@ class MasterController extends BaseController
     // ── Proses Import KPI Unit dari Excel ─────────────────────
     public function kpiUnitImportProcess(int $direktoratId)
     {
+        $check = $this->checkMenuEdit('master_direktorat');
+        if ($check !== true) return $check;
+
         $direktoratModel = new \App\Models\DirektoratModel();
         $direktorat      = $direktoratModel->find($direktoratId);
         if (!$direktorat) {
@@ -1124,7 +1220,9 @@ class MasterController extends BaseController
             $namaKpi    = trim($row['B'] ?? '');
             $satuan     = trim($row['C'] ?? '');
             $polarity   = strtolower(trim($row['D'] ?? 'max'));
-            $perubahan  = strtolower(trim($row['E'] ?? 'pos'));
+            // Kolom E ("Perubahan Polarity") diabaikan — nilainya selalu
+            // diturunkan dari Polarity (lihat catatan di
+            // collectKpiUnitPolarityData()), bukan lagi dibaca dari template.
             $urutan     = (int)($row['F'] ?? 99) ?: 99;
 
             // Validasi baris
@@ -1142,10 +1240,6 @@ class MasterController extends BaseController
             }
             if (!in_array($polarity, ['max', 'min'])) {
                 $dilewati[] = "Baris $i: Polarity harus 'max' atau 'min'.";
-                continue;
-            }
-            if (!in_array($perubahan, ['pos', 'neg'])) {
-                $dilewati[] = "Baris $i: Perubahan Polarity harus 'pos' atau 'neg'.";
                 continue;
             }
 
@@ -1173,7 +1267,7 @@ class MasterController extends BaseController
                 'satuan'             => $satuan,
                 'bobot'              => 0,
                 'polarity'           => $polarity,
-                'perubahan_polarity' => $perubahan,
+                'perubahan_polarity' => $polarity === 'min' ? 'neg' : 'pos',
                 'urutan'             => $urutan,
                 'is_active'          => 1,
             ]);
@@ -1189,8 +1283,11 @@ class MasterController extends BaseController
     }
 
     // ══ DATA UNIT KERJA ══════════════════════════════════════
-    public function unitKerja(): string
+    public function unitKerja()
     {
+        $check = $this->checkMenuAccess('master_unitkerja');
+        if ($check !== true) return $check;
+
         $divisiModel     = new \App\Models\DivisiModel();
         $direktoratModel = new \App\Models\DirektoratModel();
 
@@ -1203,8 +1300,11 @@ class MasterController extends BaseController
         ]);
     }
 
-    public function unitKerjaCreate(): string
+    public function unitKerjaCreate()
     {
+        $check = $this->checkMenuAccess('master_unitkerja');
+        if ($check !== true) return $check;
+
         $direktoratModel = new \App\Models\DirektoratModel();
         return view('layouts/main', [
             'title'   => 'Tambah Unit Kerja',
@@ -1218,6 +1318,9 @@ class MasterController extends BaseController
 
     public function unitKerjaStore()
     {
+        $check = $this->checkMenuEdit('master_unitkerja');
+        if ($check !== true) return $check;
+
         // 1. Aturan Validasi
         $rules = [
             'kode'          => 'required|regex_match[/^\S+$/]|is_unique[divisi.kode]',
@@ -1264,6 +1367,9 @@ class MasterController extends BaseController
 
     public function unitKerjaEdit(int $id)
     {
+        $check = $this->checkMenuAccess('master_unitkerja');
+        if ($check !== true) return $check;
+
         $m = new \App\Models\DivisiModel();
         $divisi = $m->find($id);
 
@@ -1286,6 +1392,9 @@ class MasterController extends BaseController
 
     public function unitKerjaUpdate(int $id)
     {
+        $check = $this->checkMenuEdit('master_unitkerja');
+        if ($check !== true) return $check;
+
         // 1. Aturan Validasi (Mengabaikan ID yang sedang di-update pada is_unique)
         $rules = [
             'kode'          => "required|regex_match[/^\S+$/]|is_unique[divisi.kode,id,{$id}]",
@@ -1331,6 +1440,9 @@ class MasterController extends BaseController
 
     public function unitKerjaToggle(int $id)
     {
+        $check = $this->checkMenuEdit('master_unitkerja');
+        if ($check !== true) return $check;
+
         $m = new \App\Models\DivisiModel();
         $d = $m->find($id);
 
@@ -1347,6 +1459,9 @@ class MasterController extends BaseController
 
     public function unitKerjaDelete(int $id)
     {
+        $check = $this->checkMenuEdit('master_unitkerja');
+        if ($check !== true) return $check;
+
         $m = new \App\Models\DivisiModel();
 
         $pegawaiCount = (new \App\Models\PegawaiModel())
@@ -1385,6 +1500,9 @@ class MasterController extends BaseController
 
     public function direktoratDelete(int $id)
     {
+        $check = $this->checkMenuEdit('master_direktorat');
+        if ($check !== true) return $check;
+
         $m = new \App\Models\DirektoratModel();
 
         // Cek apakah masih ada divisi yang menggunakan direktorat ini

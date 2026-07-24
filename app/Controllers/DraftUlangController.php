@@ -121,7 +121,7 @@ class DraftUlangController extends BaseController
     }
 
     // ── Admin: Daftar permintaan draft ulang ─────────────────
-    public function index(): string
+    public function index()
     {
         if (session()->get('role') !== 'admin') {
             return redirect()->to(base_url('dashboard'))

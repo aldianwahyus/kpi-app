@@ -77,4 +77,23 @@ abstract class BaseController extends Controller
         }
         return true;
     }
+
+    /**
+     * Cek hak akses TULIS (simpan/ubah/hapus/import/copy) untuk suatu menu.
+     * Dipakai di aksi yang mengubah data, terpisah dari checkMenuAccess()
+     * yang hanya membatasi akses lihat — supaya role dengan "Bisa Lihat"
+     * saja (can_view=1, can_edit=0) tidak bisa menyimpan/mengubah/menghapus
+     * data lewat menu tersebut.
+     */
+    protected function checkMenuEdit(string $kodeMenu)
+    {
+        $role = session()->get('role');
+        if ($role === 'admin') return true;
+
+        $permModel = new \App\Models\RolePermissionModel();
+        if (!$permModel->canEdit($role, $kodeMenu)) {
+            return $this->forbidden('Anda hanya memiliki akses lihat untuk menu ini.');
+        }
+        return true;
+    }
 }

@@ -69,4 +69,26 @@ class RolePermissionModel extends Model
         // Mengembalikan True jika can_view = 1
         return ($permission && $permission['can_view'] == 1);
     }
+
+    /**
+     * 4. Digunakan oleh controller untuk membatasi aksi tulis (simpan/ubah/
+     * hapus/import/copy) — terpisah dari canAccess() yang hanya membatasi
+     * akses lihat. Sebuah role bisa saja punya can_view=1 tapi can_edit=0
+     * (akses lihat saja, tanpa bisa mengubah data).
+     */
+    public function canEdit(string $role, string $kodeMenu): bool
+    {
+        // Admin otomatis bisa mengakses segalanya
+        if ($role === 'admin') {
+            return true;
+        }
+
+        $permission = $this->db->table('role_permission rp')
+            ->join('menu_list m', 'm.id = rp.menu_id')
+            ->where('rp.role', $role)
+            ->where('m.kode_menu', $kodeMenu)
+            ->get()->getRowArray();
+
+        return ($permission && $permission['can_edit'] == 1);
+    }
 }

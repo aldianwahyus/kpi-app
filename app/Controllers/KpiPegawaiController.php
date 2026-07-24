@@ -32,12 +32,15 @@ class KpiPegawaiController extends BaseController
      * (identik dengan skema di KPI Unit/Modul Direktorat) — dipusatkan di
      * sini karena dipakai sama persis oleh addTurunan() & updateTurunan().
      */
-    private function buildTurunanPolarityData(string $polarity, string $perubahanPolarityRaw): array
+    private function buildTurunanPolarityData(string $polarity): array
     {
         return [
-            'perubahan_polarity' => in_array($polarity, ['max', 'min'], true)
-                ? (in_array($perubahanPolarityRaw, ['pos', 'neg'], true) ? $perubahanPolarityRaw : 'pos')
-                : 'pos',
+            // Diturunkan dari Polarity, bukan diinput manual — "Perubahan
+            // Polarity" hanyalah representasi lama dari Polarity itu
+            // sendiri (Positif=Maximize, Negatif=Minimize), jadi selalu
+            // disamakan agar tidak pernah terjadi kombinasi yang saling
+            // bertentangan.
+            'perubahan_polarity' => $polarity === 'min' ? 'neg' : 'pos',
             'toleransi_skor4' => $polarity === 'precise' ? $this->request->getPost('toleransi_skor4') : null,
             'toleransi_skor3' => $polarity === 'precise' ? $this->request->getPost('toleransi_skor3') : null,
             'toleransi_skor2' => $polarity === 'precise' ? $this->request->getPost('toleransi_skor2') : null,
@@ -242,7 +245,7 @@ class KpiPegawaiController extends BaseController
     // ── Tambah satu KPI ke Pegawai ───────────────────────────
     public function add(int $pegawaiId)
     {
-        $check = $this->checkMenuAccess('kpi_pegawai');
+        $check = $this->checkMenuEdit('kpi_pegawai');
         if ($check !== true) return $check;
 
         if (!$this->canAccessPegawai($pegawaiId)) return $this->forbidden();
@@ -289,7 +292,7 @@ class KpiPegawaiController extends BaseController
     // panduan pengisian Realisasi ("Deskripsi Target") per KPI.
     public function saveDeskripsi(int $pegawaiId)
     {
-        $check = $this->checkMenuAccess('kpi_pegawai');
+        $check = $this->checkMenuEdit('kpi_pegawai');
         if ($check !== true) return $check;
 
         if (!$this->canAccessPegawai($pegawaiId)) return $this->forbidden();
@@ -310,7 +313,7 @@ class KpiPegawaiController extends BaseController
     // ── Hapus KPI dari Pegawai ───────────────────────────────
     public function delete(int $id)
     {
-        $check = $this->checkMenuAccess('kpi_pegawai');
+        $check = $this->checkMenuEdit('kpi_pegawai');
         if ($check !== true) return $check;
 
         $row = $this->kpiPegawaiModel->find($id);
@@ -333,7 +336,7 @@ class KpiPegawaiController extends BaseController
     // ── Tambah Parameter Turunan ke suatu Parameter Induk ────
     public function addTurunan(int $kpiPegawaiId)
     {
-        $check = $this->checkMenuAccess('kpi_pegawai');
+        $check = $this->checkMenuEdit('kpi_pegawai');
         if ($check !== true) return $check;
 
         $induk = $this->kpiPegawaiModel->find($kpiPegawaiId);
@@ -347,7 +350,6 @@ class KpiPegawaiController extends BaseController
         $nama              = trim($this->request->getPost('nama_turunan')      ?? '');
         $deskripsiTarget   = trim($this->request->getPost('deskripsi_target')  ?? '') ?: null;
         $polarity          = $this->request->getPost('polarity')           ?? 'max';
-        $perubahanPolarityRaw = $this->request->getPost('perubahan_polarity')  ?? 'pos';
         $satuan            = trim($this->request->getPost('satuan')         ?? '') ?: null;
 
         // Validasi enum agar tidak bisa dimanipulasi lewat POST
@@ -375,7 +377,7 @@ class KpiPegawaiController extends BaseController
             'satuan'           => $satuan,
             'urutan'           => (int)$this->request->getPost('urutan') ?: 99,
             'is_active'        => 1,
-        ], $this->buildTurunanPolarityData($polarity, $perubahanPolarityRaw)));
+        ], $this->buildTurunanPolarityData($polarity)));
 
         return redirect()->to(base_url("kpi-pegawai/edit/{$induk['pegawai_id']}"))
                          ->with('success', 'Parameter Turunan berhasil ditambahkan.');
@@ -384,7 +386,7 @@ class KpiPegawaiController extends BaseController
     // ── Hapus satu Parameter Turunan ──────────────────────────
     public function deleteTurunan(int $id)
     {
-        $check = $this->checkMenuAccess('kpi_pegawai');
+        $check = $this->checkMenuEdit('kpi_pegawai');
         if ($check !== true) return $check;
 
         $turunan = $this->kpiPegawaiTurunanModel->find($id);
@@ -412,7 +414,7 @@ class KpiPegawaiController extends BaseController
     // ── Update satu Parameter Turunan ─────────────────────────
     public function updateTurunan(int $id)
     {
-        $check = $this->checkMenuAccess('kpi_pegawai');
+        $check = $this->checkMenuEdit('kpi_pegawai');
         if ($check !== true) return $check;
 
         $turunan = $this->kpiPegawaiTurunanModel->find($id);
@@ -432,7 +434,6 @@ class KpiPegawaiController extends BaseController
         $nama              = trim($this->request->getPost('nama_turunan')      ?? '');
         $deskripsiTarget   = trim($this->request->getPost('deskripsi_target')  ?? '') ?: null;
         $polarity          = $this->request->getPost('polarity')           ?? 'max';
-        $perubahanPolarityRaw = $this->request->getPost('perubahan_polarity')  ?? 'pos';
         $satuan            = trim($this->request->getPost('satuan')         ?? '') ?: null;
 
         // Validasi enum agar tidak bisa dimanipulasi lewat POST
@@ -456,7 +457,7 @@ class KpiPegawaiController extends BaseController
             'deskripsi_target' => $deskripsiTarget,
             'polarity'         => $polarity,
             'satuan'           => $satuan,
-        ], $this->buildTurunanPolarityData($polarity, $perubahanPolarityRaw)));
+        ], $this->buildTurunanPolarityData($polarity)));
 
         return redirect()->to(base_url("kpi-pegawai/edit/{$induk['pegawai_id']}"))
                          ->with('success', 'Parameter Turunan berhasil diperbarui.');
@@ -466,7 +467,7 @@ class KpiPegawaiController extends BaseController
     // Mengubah nama method menjadi copy() agar cocok dengan route form action `kpi-pegawai/copy/...`
     public function copy(int $pegawaiId)
     {
-        $check = $this->checkMenuAccess('kpi_pegawai');
+        $check = $this->checkMenuEdit('kpi_pegawai');
         if ($check !== true) return $check;
 
         if (!$this->canAccessPegawai($pegawaiId)) return $this->forbidden();
@@ -569,7 +570,7 @@ class KpiPegawaiController extends BaseController
 
     public function copyMassal()
     {
-        $check = $this->checkMenuAccess('kpi_pegawai');
+        $check = $this->checkMenuEdit('kpi_pegawai');
         if ($check !== true) return $check;
 
         $sourceId = (int)$this->request->getPost('source_pegawai_id');
@@ -692,7 +693,7 @@ class KpiPegawaiController extends BaseController
             'A' => 'Tipe *', 'B' => 'NIP/Email Pegawai *', 'C' => 'Kode KPI *',
             'D' => 'Nama Turunan', 'E' => 'Bobot (desimal) *', 'F' => 'Target *',
             'G' => 'Deskripsi Target', 'H' => 'Satuan',
-            'I' => 'Polarity (max/min)', 'J' => 'Perubahan Polarity (pos/neg)', 'K' => 'Urutan',
+            'I' => 'Polarity (max/min)', 'J' => 'Perubahan Polarity (info, otomatis ikut Polarity)', 'K' => 'Urutan',
         ];
         foreach ($headers as $col => $h) {
             $sheet->setCellValue("{$col}1", $h);
@@ -719,7 +720,7 @@ class KpiPegawaiController extends BaseController
             'M3' => 'NIP/Email di baris TURUNAN boleh kosong (mengikuti INDUK di atasnya)',
             'M4' => 'Kode KPI di baris TURUNAN boleh kosong, isi Nama Turunan-nya',
             'M5' => 'KPI yang sudah ada akan DILEWATI (Skip)',
-            'M6' => 'Polarity default: max | Perubahan default: pos',
+            'M6' => 'Polarity default: max | Kolom Perubahan Polarity hanya informasi, tidak dibaca — otomatis mengikuti Polarity',
         ];
         foreach ($notes as $cell => $val) $sheet->setCellValue($cell, $val);
         $sheet->getColumnDimension('M')->setWidth(65);
@@ -734,7 +735,7 @@ class KpiPegawaiController extends BaseController
 
     public function importProcess()
     {
-        $check = $this->checkMenuAccess('kpi_pegawai');
+        $check = $this->checkMenuEdit('kpi_pegawai');
         if ($check !== true) return $check;
 
         $file = $this->request->getFile('file_excel');
@@ -777,7 +778,8 @@ class KpiPegawaiController extends BaseController
             $deskripsi   = trim($row['G'] ?? '');
             $satuan      = trim($row['H'] ?? '');
             $polarity    = strtolower(trim($row['I'] ?? 'max'));
-            $perubahan   = strtolower(trim($row['J'] ?? 'pos'));
+            // Kolom J ("Perubahan Polarity") diabaikan — nilainya selalu
+            // diturunkan dari Polarity (lihat buildTurunanPolarityData()).
             $urutan      = (int)($row['K'] ?? 99) ?: 99;
 
             if ($tipe === '' && $nikEmail === '' && $kodeKpi === '') continue;
@@ -870,7 +872,6 @@ class KpiPegawaiController extends BaseController
                 }
 
                 if (!in_array($polarity, ['max', 'min']))   $polarity = 'max';
-                if (!in_array($perubahan, ['pos', 'neg']))  $perubahan = 'pos';
 
                 $this->kpiPegawaiTurunanModel->insert([
                     'kpi_pegawai_id'     => $currentKpId,
@@ -880,7 +881,9 @@ class KpiPegawaiController extends BaseController
                     'deskripsi_target'   => $deskripsi ?: null,
                     'satuan'             => $satuan ?: null,
                     'polarity'           => $polarity,
-                    'perubahan_polarity' => $perubahan,
+                    // Diturunkan dari Polarity, bukan dibaca dari kolom J —
+                    // lihat catatan di buildTurunanPolarityData().
+                    'perubahan_polarity' => $polarity === 'min' ? 'neg' : 'pos',
                     'urutan'             => $urutan,
                     'is_active'          => 1,
                     'created_at'         => $now,

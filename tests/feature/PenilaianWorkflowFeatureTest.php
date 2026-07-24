@@ -180,6 +180,95 @@ final class PenilaianWorkflowFeatureTest extends KpiTestCase
         $this->assertSame('Data belum lengkap.', $row['reject_note']);
     }
 
+    // ── Badge jumlah "submitted, belum di-approve" di sidebar (Approver) ──
+
+    public function testGetCountSubmittedUntukDivisiMenghitungHanyaYangSubmitted(): void
+    {
+        $direktoratId = $this->makeDirektorat();
+        $divisiId     = $this->makeDivisi($direktoratId, 'DVA');
+        $kpiUnitId    = $this->makeKpiUnit($direktoratId, 'TK-BADGE1');
+        $periodeId    = $this->makePeriodeAktif();
+
+        $pegawaiSubmitted1 = $this->makePegawai($divisiId, 'Sudah Submit 1');
+        $pegawaiSubmitted2 = $this->makePegawai($divisiId, 'Sudah Submit 2');
+        $pegawaiDraft      = $this->makePegawai($divisiId, 'Masih Draft');
+        $pegawaiApproved   = $this->makePegawai($divisiId, 'Sudah Approved');
+
+        $model = new PenilaianModel();
+        foreach ([$pegawaiSubmitted1, $pegawaiSubmitted2] as $pid) {
+            $model->insert(['pegawai_id' => $pid, 'kpi_id' => $kpiUnitId, 'periode_id' => $periodeId, 'realisasi' => 100, 'skor' => 100, 'status' => 'submitted']);
+        }
+        $model->insert(['pegawai_id' => $pegawaiDraft, 'kpi_id' => $kpiUnitId, 'periode_id' => $periodeId, 'realisasi' => 100, 'skor' => 100, 'status' => 'draft']);
+        $model->insert(['pegawai_id' => $pegawaiApproved, 'kpi_id' => $kpiUnitId, 'periode_id' => $periodeId, 'realisasi' => 100, 'skor' => 100, 'status' => 'approved']);
+
+        $this->assertSame(2, $model->getCountSubmittedUntukDivisi($periodeId));
+    }
+
+    public function testGetCountSubmittedUntukDivisiMembatasiKeDivisiTertentu(): void
+    {
+        $direktoratId = $this->makeDirektorat();
+        $divisiA      = $this->makeDivisi($direktoratId, 'DVA');
+        $divisiB      = $this->makeDivisi($direktoratId, 'DVB');
+        $kpiUnitId    = $this->makeKpiUnit($direktoratId, 'TK-BADGE2');
+        $periodeId    = $this->makePeriodeAktif();
+
+        $pegawaiA = $this->makePegawai($divisiA, 'Submit Divisi A');
+        $pegawaiB = $this->makePegawai($divisiB, 'Submit Divisi B');
+
+        $model = new PenilaianModel();
+        $model->insert(['pegawai_id' => $pegawaiA, 'kpi_id' => $kpiUnitId, 'periode_id' => $periodeId, 'realisasi' => 100, 'skor' => 100, 'status' => 'submitted']);
+        $model->insert(['pegawai_id' => $pegawaiB, 'kpi_id' => $kpiUnitId, 'periode_id' => $periodeId, 'realisasi' => 100, 'skor' => 100, 'status' => 'submitted']);
+
+        $this->assertSame(1, $model->getCountSubmittedUntukDivisi($periodeId, $divisiA), 'Hanya divisi A yang boleh terhitung ketika discope ke divisi A.');
+        $this->assertSame(2, $model->getCountSubmittedUntukDivisi($periodeId, null), 'Tanpa scope, kedua divisi harus terhitung.');
+    }
+
+    // ── Regresi: badge notifikasi "submitted, belum di-approve" di sidebar
+    // — hanya untuk role Approver, dan hanya menghitung pegawai di
+    // divisinya sendiri (sama seperti scope Approver di modul lain).
+    public function testBadgeSubmittedMunculDiSidebarUntukApproverDenganCountBenar(): void
+    {
+        $direktoratId = $this->makeDirektorat();
+        $divisiA      = $this->makeDivisi($direktoratId, 'DVA');
+        $divisiB      = $this->makeDivisi($direktoratId, 'DVB');
+        $kpiUnitId    = $this->makeKpiUnit($direktoratId, 'TK-BADGE3');
+        $periodeId    = $this->makePeriodeAktif();
+
+        $approverPegawaiId = $this->makePegawai($divisiA, 'Approver Satu');
+        $pegawaiSubmittedA  = $this->makePegawai($divisiA, 'Submit Divisi A');
+        $pegawaiSubmittedB  = $this->makePegawai($divisiB, 'Submit Divisi B');
+
+        $model = new PenilaianModel();
+        $model->insert(['pegawai_id' => $pegawaiSubmittedA, 'kpi_id' => $kpiUnitId, 'periode_id' => $periodeId, 'realisasi' => 100, 'skor' => 100, 'status' => 'submitted']);
+        $model->insert(['pegawai_id' => $pegawaiSubmittedB, 'kpi_id' => $kpiUnitId, 'periode_id' => $periodeId, 'realisasi' => 100, 'skor' => 100, 'status' => 'submitted']);
+
+        $result = $this->withSession($this->sessionFor('approver', 1, $approverPegawaiId))
+            ->get('dashboard');
+
+        $result->assertOK();
+        // Hanya 1 (divisi A) yang boleh terhitung, bukan 2 (kedua divisi).
+        $result->assertSee('1', '#badge-submitted-count');
+    }
+
+    public function testBadgeSubmittedTidakMunculUntukRoleSelainApprover(): void
+    {
+        $direktoratId = $this->makeDirektorat();
+        $divisiId     = $this->makeDivisi($direktoratId, 'DVA');
+        $kpiUnitId    = $this->makeKpiUnit($direktoratId, 'TK-BADGE4');
+        $periodeId    = $this->makePeriodeAktif();
+
+        $drafterPegawaiId = $this->makePegawai($divisiId, 'Drafter Satu');
+        $pegawaiSubmitted = $this->makePegawai($divisiId, 'Submit Satu');
+
+        (new PenilaianModel())->insert(['pegawai_id' => $pegawaiSubmitted, 'kpi_id' => $kpiUnitId, 'periode_id' => $periodeId, 'realisasi' => 100, 'skor' => 100, 'status' => 'submitted']);
+
+        $result = $this->withSession($this->sessionFor('drafter', 1, $drafterPegawaiId))
+            ->get('dashboard');
+
+        $result->assertOK();
+        $result->assertDontSeeElement('#badge-submitted-count');
+    }
+
     // ── Kolom "Pencapaian" (live preview via ajaxHitung) ──
 
     public function testAjaxHitungMengembalikanPencapaianUntukPolarityMax(): void

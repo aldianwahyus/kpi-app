@@ -28,7 +28,7 @@ class RekapController extends BaseController
     // ── Rekap semua pegawai ──────────────────────────────────
     public function index()
     {
-        $check = $this->checkMenuAccess('penilaian');
+        $check = $this->checkMenuAccess('rekap');
         if ($check !== true) return $check;
         
         $role      = session()->get('role');
@@ -140,7 +140,7 @@ class RekapController extends BaseController
     // ── Detail penilaian satu pegawai ────────────────────────
     public function detail(int $pegawaiId)
     {
-        $check = $this->checkMenuAccess('penilaian');
+        $check = $this->checkMenuAccess('rekap');
         if ($check !== true) return $check;
 
         if (!$this->canAccessPegawai($pegawaiId)) return $this->forbidden();

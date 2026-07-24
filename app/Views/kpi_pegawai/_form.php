@@ -305,13 +305,10 @@
                   </div>
                   <div class="row g-2 mb-2 polarity-field" data-for="max,min">
                     <div class="col-12">
-                      <label class="form-label fw-semibold small">
-                        Perubahan Polarity <span class="text-danger">*</span>
-                      </label>
-                      <select name="perubahan_polarity" class="form-select form-select-sm">
-                        <option value="pos">Positif</option>
-                        <option value="neg">Negatif</option>
-                      </select>
+                      <label class="form-label fw-semibold small">Perubahan Polarity</label>
+                      <div class="form-control form-control-sm bg-light text-muted info-perubahan-polarity-turunan" style="font-size:12px">
+                        Positif
+                      </div>
                     </div>
                   </div>
                   <div class="mb-2 polarity-field" data-for="precise">
@@ -415,13 +412,10 @@
                   </div>
                   <div class="row g-2 mb-2 polarity-field" data-for="max,min">
                     <div class="col-12">
-                      <label class="form-label fw-semibold small">
-                        Perubahan Polarity <span class="text-danger">*</span>
-                      </label>
-                      <select name="perubahan_polarity" class="form-select form-select-sm">
-                        <option value="pos" <?= ($t['perubahan_polarity'] ?? 'pos') === 'pos' ? 'selected' : '' ?>>Positif</option>
-                        <option value="neg" <?= ($t['perubahan_polarity'] ?? 'pos') === 'neg' ? 'selected' : '' ?>>Negatif</option>
-                      </select>
+                      <label class="form-label fw-semibold small">Perubahan Polarity</label>
+                      <div class="form-control form-control-sm bg-light text-muted info-perubahan-polarity-turunan" style="font-size:12px">
+                        <?= ($t['polarity'] ?? 'max') === 'min' ? 'Negatif' : 'Positif' ?>
+                      </div>
                     </div>
                   </div>
                   <div class="mb-2 polarity-field" data-for="precise">
@@ -677,6 +671,9 @@ document.querySelectorAll('.sel-polarity-turunan').forEach(function (sel) {
             el.querySelectorAll('input, select').forEach(function (field) {
                 field.disabled = !active;
             });
+        });
+        modalContent.querySelectorAll('.info-perubahan-polarity-turunan').forEach(function (el) {
+            el.textContent = polarity === 'min' ? 'Negatif' : 'Positif';
         });
     }
 
